@@ -1,0 +1,22 @@
+/* 기본 배경 및 텍스트 설정 */
+body {
+  background-color: #ffffff;
+  color: #333;
+}
+
+/* 감정별 텍스트 색상 */
+.emotion-happy {
+  color: #0095FF; /* 기쁨 */
+}
+
+.emotion-sad {
+  color: #0926B5; /* 슬픔 */
+}
+
+.emotion-angry {
+  color: #CD0505; /* 분노 */
+}
+
+.emotion-anxious {
+  color: #FFD700; /* 불안 */
+}

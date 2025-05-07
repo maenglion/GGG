@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>대화를 마칠까?</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      background-color: #ffffff;
+      color: #333;
+      font-family: 'KoPubWorld Dotum', sans-serif;
+      margin: 0;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    p {
+      font-size: 16px;
+      color: #555;
+      margin-bottom: 30px;
+      line-height: 1.5;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .btn-group button {
+      width: 320px;
+      height: 60px;
+      font-size: 18px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+    }
+
+    .primary {
+      background-color: #0095FF;
+      color: white;
+    }
+
+    .secondary {
+      background-color: #D2E9FF;
+      color: #333;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #ffffff !important;
+        color: #333 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h2>대화를 마칠까?</h2>
+    <p>조금 쉬었다가 다시 이야기해도 좋아.<br>계속 이야기하고 싶으면 이어서 해보자.</p>
+
+    <div class="btn-group">
+      <button class="primary" onclick="goToAnalysis()">분석하기</button>
+      <button class="secondary" onclick="goToTalk()">계속 이야기할래</button>
+    </div>
+  </main>
+
+  <script>
+    function goToAnalysis() {
+      window.location.href = 'analysis.html';
+    }
+
+    function goToTalk() {
+      window.location.href = 'talk.html';
+    }
+  </script>
+</body>
+</html>
+

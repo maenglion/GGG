@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=430" />
+  <title>AI 친구와 대화</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8f8f8;
+    }
+    main.container {
+      max-width: 430px;
+      margin: auto;
+      padding: 20px;
+    }
+    #transcript {
+      background: #fff;
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .user-speaker { color: #0077cc; }
+    .assistant-speaker { color: #ff4081; }
+    .system-speaker { color: #888; }
+    canvas {
+      display: block;
+      margin: 10px auto;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      margin: 5px 0;
+      border: none;
+      border-radius: 6px;
+    }
+    #talk-btn {
+      background: #0077cc;
+      color: white;
+    }
+    #interaction-btn {
+      background: #ccc;
+      color: #000;
+    }
+    #interaction-btn.analysis-ready {
+      background: #ff4081;
+      color: white;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div id="transcript">
+      <p><strong>AI 친구:</strong> 안녕! 오늘은 어떤 기분이야?</p>
+    </div>
+    <canvas id="mic-visualizer" width="400" height="100"></canvas>
+    <button id="talk-btn">대화하기</button>
+    <button id="interaction-btn" disabled>숨 돌리기</button>
+  </main>
+
+  <script type="module">
+    import { startSTT, stopSTT } from './js/stt.js';
+    import { startTTS } from './js/tts.js';
+    import { getGptResponse } from './js/gpt-dialog.js';
+    import { startVisualizer, stopVisualizer } from './js/visualizer_p5.js'; 
+
+    const talkBtn = document.getElementById('talk-btn');
+    const interactionBtn = document.getElementById('interaction-btn');
+    const transcriptEl = document.getElementById('transcript');
+    const canvasForVisualizer = document.getElementById('mic-visualizer');
+
+    let isRecording = false;
+    let conversationHistory = [];
+    let conversationStartTime = null;
+    let mediaStream = null;
+
+    const isReadyForAnalysis = () => {
+      if (!conversationStartTime) return false;
+      const elapsed = (Date.now() - conversationStartTime.getTime()) / 1000;
+      return conversationHistory.length >= 10 && elapsed >= 300;
+    };
+
+    function updateTranscriptDisplay(text, role = "system") {
+      const paragraph = document.createElement('p');
+      paragraph.innerHTML = `<strong>${role === 'user' ? '민후' : role === 'assistant' ? 'AI 친구' : '시스템'}:</strong> ${text}`;
+      paragraph.classList.add(`${role}-speaker`);
+      transcriptEl.appendChild(paragraph);
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    async function startRecording() {
+      try {
+        if (!conversationStartTime) conversationStartTime = new Date();
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        await startVisualizer(canvasForVisualizer, mediaStream);
+
+        startSTT((text) => {
+          if (!isRecording) return;
+          if (text) {
+            localStorage.setItem('userSpeech', text);
+            updateTranscriptDisplay(text, 'user');
+            interactionBtn.disabled = false;
+          } else {
+            updateTranscriptDisplay("잘 못 들었어. 다시 한 번 말해줄래?", 'system');
+          }
+        });
+
+        updateTranscriptDisplay("듣고 있어! 천천히 말해줘 😊", 'system');
+        isRecording = true;
+        talkBtn.textContent = '잠깐 쉬기';
+        talkBtn.classList.add('active');
+      } catch (err) {
+        console.error("녹음 오류:", err);
+        updateTranscriptDisplay("마이크를 사용할 수 없어요. 설정을 확인해주세요.", 'system');
+      }
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      stopSTT();
+      stopVisualizer();
+      talkBtn.textContent = '대화하기';
+      talkBtn.classList.remove('active');
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+    }
+
+    talkBtn.addEventListener('click', async () => {
+      if (!isRecording) {
+        await startRecording();
+      } else {
+        stopRecording();
+        const text = localStorage.getItem('userSpeech');
+        if (text) {
+          updateTranscriptDisplay(`"${text}" 라고 말했구나. 이제 [숨 돌리기]를 눌러볼까?`, 'system');
+        } else {
+          updateTranscriptDisplay("대화를 멈췄는데 아무 말도 없었어. 다시 해볼까?", 'system');
+        }
+      }
+    });
+
+    interactionBtn.addEventListener('click', async () => {
+      const userText = localStorage.getItem('userSpeech');
+      if (!userText) {
+        updateTranscriptDisplay("아직 말한 게 없어. 먼저 [대화하기]로 이야기해볼래?", 'system');
+        return;
+      }
+
+      updateTranscriptDisplay("AI 친구가 생각 중이야... 🤔", 'system');
+      try {
+        const response = await getGptResponse(userText, conversationHistory);
+        localStorage.removeItem('userSpeech');
+
+        if (response?.rephrasing) updateTranscriptDisplay(response.rephrasing, 'assistant');
+        if (response?.followUpQuestion) updateTranscriptDisplay(response.followUpQuestion, 'assistant');
+
+        conversationHistory.push({ role: 'user', content: userText });
+        conversationHistory.push({ role: 'assistant', content: response.rephrasing });
+
+        if (isReadyForAnalysis()) {
+          interactionBtn.textContent = '대화 분석하기';
+          interactionBtn.classList.add('analysis-ready');
+        }
+      } catch (err) {
+        console.error("GPT 오류:", err);
+        updateTranscriptDisplay("음... 지금은 연결이 잘 안돼. 잠시 후 다시 시도해볼까?", 'system');
+      }
+    });
+  </script>
+</body>
+</html>
