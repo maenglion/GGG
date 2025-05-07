@@ -1,78 +1,103 @@
-// 📁 public/js/stt.js (프론트엔드용 Google STT 연동 예시)
+// ✅ server.js (STT + GPT + Google Cloud TTS 통합 버전)
+import express from 'express';
+import fetch from 'node-fetch';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { SpeechClient } from '@google-cloud/speech';
+import textToSpeech from '@google-cloud/text-to-speech';
 
-let mediaRecorder;
-let audioChunks = [];
+dotenv.config();
 
-export function startRecording() {
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(stream => {
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      audioChunks = [];
+const app = express();
+const port = process.env.PORT || 3000;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-      mediaRecorder.ondataavailable = e => {
-        audioChunks.push(e.data);
-      };
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const arrayBuffer = await audioBlob.arrayBuffer();
-        const audioBase64 = arrayBufferToBase64(arrayBuffer);
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-        const response = await fetch('/api/stt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audioContent: audioBase64 })
-        });
+const sttClient = new SpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
+const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
 
-        const result = await response.json();
-        if (result.text) {
-          console.log('🗣️ 인식된 텍스트:', result.text);
-          // 여기에 GPT 호출 연결 가능
-        } else {
-          console.error('STT 실패:', result);
-        }
-      };
-
-      mediaRecorder.start();
-      console.log('🎙️ 녹음 시작');
-    })
-    .catch(err => {
-      console.error('마이크 접근 오류:', err);
-    });
-}
-
-export function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-    console.log('🛑 녹음 중지');
+// ✅ GPT 대화
+app.post('/api/gpt-chat', async (req, res) => {
+  const { messages, model = 'gpt-4', temperature = 0.7 } = req.body;
+  if (!OPENAI_API_KEY || !messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: '유효하지 않은 요청' });
   }
-}
-
-function arrayBufferToBase64(buffer) {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-  recognition.onend = () => {
-    console.log("🔚 인식 종료됨");
-    // 필요시 재시도 로직 추가 가능
-  };
 
   try {
-    recognition.start();
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({ model, messages, temperature })
+    });
+    const text = await response.text();
+    if (!response.ok) return res.status(response.status).send(text);
+    res.send(JSON.parse(text));
   } catch (err) {
-    console.error("🎤 recognition.start() 실패:", err);
-    callback(null);
+    res.status(500).json({ error: 'GPT 호출 오류', details: err.message });
   }
-}
+});
 
-export function stopSTT() {
-  if (recognition) {
-    recognition.stop();
-    console.log("🛑 음성 인식 중지 요청됨");
+// ✅ STT 음성 → 텍스트
+app.post('/api/stt', async (req, res) => {
+  const { audioContent } = req.body;
+  if (!audioContent) return res.status(400).json({ error: 'audioContent 누락' });
+
+  try {
+    const [response] = await sttClient.recognize({
+      audio: { content: audioContent },
+      config: {
+        encoding: 'LINEAR16',
+        sampleRateHertz: 48000,
+        languageCode: 'ko-KR',
+        enableAutomaticPunctuation: true
+      }
+    });
+    const text = response.results.map(r => r.alternatives[0].transcript).join('\n');
+    res.json({ text });
+  } catch (err) {
+    res.status(500).json({ error: 'STT 실패', details: err.message });
   }
-}
+});
+
+// ✅ TTS 텍스트 → 음성
+app.post('/api/tts', async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'text 누락' });
+
+  try {
+    const [response] = await ttsClient.synthesizeSpeech({
+      input: { text },
+      voice: { languageCode: 'ko-KR', ssmlGender: 'FEMALE' },
+      audioConfig: { audioEncoding: 'MP3' }
+    });
+
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(response.audioContent);
+  } catch (err) {
+    res.status(500).json({ error: 'TTS 실패', details: err.message });
+  }
+});
+
+// ✅ SPA 대응
+app.get('*', (req, res) => {
+  const filePath = path.join(__dirname, 'public', req.path === '/' ? 'index.html' : req.path);
+  res.sendFile(filePath, err => {
+    if (err) res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  });
+});
+
+app.listen(port, () => {
+  console.log(`✅ 서버 실행 중: http://localhost:${port}`);
+});
