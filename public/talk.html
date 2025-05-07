@@ -3,179 +3,145 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=430" />
-  <title>AI 친구와 대화</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+  <title>STT (음성-텍스트) 테스트</title>
   <style>
-    body {
-      font-family: 'Arial', sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #f8f8f8;
-    }
-    main.container {
-      max-width: 430px;
-      margin: auto;
-      padding: 20px;
-    }
-    #transcript {
-      background: #fff;
-      height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ddd;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-    .user-speaker { color: #0077cc; }
-    .assistant-speaker { color: #ff4081; }
-    .system-speaker { color: #888; }
-    canvas {
-      display: block;
-      margin: 10px auto;
-    }
-    button {
-      width: 100%;
-      padding: 14px;
-      font-size: 16px;
-      margin: 5px 0;
-      border: none;
-      border-radius: 6px;
-    }
-    #talk-btn {
-      background: #0077cc;
-      color: white;
-    }
-    #interaction-btn {
-      background: #ccc;
-      color: #000;
-    }
-    #interaction-btn.analysis-ready {
-      background: #ff4081;
-      color: white;
-      font-weight: bold;
-    }
+    body { font-family: 'Arial', sans-serif; padding: 20px; text-align: center; }
+    button { font-size: 1.2em; padding: 10px 20px; margin: 10px 0; cursor: pointer; width: 80%; max-width: 300px; border-radius: 8px; border: none; }
+    #stt-toggle-btn { background-color: #90ee90; color: #333; }
+    #stt-toggle-btn.recording { background-color: #ff7f7f; color: white; }
+    #stt-result { margin-top: 20px; padding: 15px; border: 1px solid #ccc; background-color: #f9f9f9; min-height: 100px; text-align: left; border-radius: 8px; white-space: pre-wrap; }
+    #status-message { margin-top: 15px; font-weight: bold; }
+    .status-error { color: red; }
+    .status-success { color: green; }
   </style>
 </head>
 <body>
-  <main class="container">
-    <div id="transcript">
-      <p><strong>AI 친구:</strong> 안녕! 오늘은 어떤 기분이야?</p>
-    </div>
-    <canvas id="mic-visualizer" width="400" height="100"></canvas>
-    <button id="talk-btn">대화하기</button>
-    <button id="interaction-btn" disabled>숨 돌리기</button>
-  </main>
+  <h1>🎤 STT (음성-텍스트 변환) 테스트</h1>
+  <p>아래 버튼을 눌러 녹음을 시작하고 마이크에 말해보세요.<br>결과가 아래 박스에 표시됩니다.</p>
+  <button id="stt-toggle-btn">녹음 시작</button>
+  <div id="stt-result">인식된 텍스트가 여기에 표시됩니다...</div>
+  <div id="status-message"></div>
 
   <script type="module">
+    // stt.js만 import
     import { startSTT, stopSTT } from './js/stt.js';
-    import { startTTS } from './js/tts.js';
-    import { getGptResponse } from './js/gpt-dialog.js';
-    import { startVisualizer, stopVisualizer } from './js/visualizer_p5.js'; 
 
-    const talkBtn = document.getElementById('talk-btn');
-    const interactionBtn = document.getElementById('interaction-btn');
-    const transcriptEl = document.getElementById('transcript');
-    const canvasForVisualizer = document.getElementById('mic-visualizer');
+    const sttToggleBtn = document.getElementById('stt-toggle-btn');
+    const sttResultEl = document.getElementById('stt-result');
+    const statusMessageEl = document.getElementById('status-message');
 
-    let isRecording = false;
-    let conversationHistory = [];
-    let conversationStartTime = null;
-    let mediaStream = null;
+    let isSttRecording = false;
+    let finalTranscript = ''; // 최종 인식 결과 저장
 
-    const isReadyForAnalysis = () => {
-      if (!conversationStartTime) return false;
-      const elapsed = (Date.now() - conversationStartTime.getTime()) / 1000;
-      return conversationHistory.length >= 10 && elapsed >= 300;
+    function logStatus(message, isError = false) {
+        console.log(`[STATUS] ${message}`);
+        statusMessageEl.textContent = message;
+        statusMessageEl.className = isError ? 'status-error' : 'status-success';
+    }
+
+    // STT 콜백 함수 정의
+    const sttCallback = (text) => {
+        if (!isSttRecording && text !== null) { // 녹음 중지 후 도착한 결과는 무시 (null은 오류 신호일 수 있음)
+            console.log(`STT Callback (무시됨 - 녹음 중 아님): ${text}`);
+            return;
+        }
+        
+        if (text && text.trim() !== "") {
+            logStatus("음성 인식됨!", false);
+            finalTranscript = text.trim(); // 최종 결과 업데이트
+            sttResultEl.textContent = `인식된 내용: "${finalTranscript}"`;
+            localStorage.setItem('userSpeechForTest', finalTranscript); // 테스트용으로 저장
+            console.log("🎙️ STT 결과:", finalTranscript);
+        } else if (text !== null) { // 인식은 됐으나 내용이 없는 경우
+            logStatus("음성은 인식되었으나 내용이 없습니다.", false);
+            sttResultEl.textContent += "\n(내용 없음)";
+            localStorage.removeItem('userSpeechForTest');
+        } 
+        // text === null 인 경우는 stt.js의 onerror나 onend에서 처리하는 것이 더 적합
+    };
+    
+    // stt.js에서 오류 발생 시 호출할 콜백 (stt.js 수정 필요)
+    const sttErrorCallback = (error) => {
+        logStatus(`STT 오류 발생: ${error}`, true);
+        isSttRecording = false;
+        sttToggleBtn.textContent = '녹음 시작';
+        sttToggleBtn.classList.remove('recording');
+        sttToggleBtn.disabled = false;
+    };
+    
+    // stt.js에서 녹음 종료 시 호출할 콜백 (stt.js 수정 필요)
+    const sttEndCallback = () => {
+        logStatus("STT 녹음이 정상적으로 종료되었습니다.", false);
+        // isSttRecording = false; // stopSTT에서 처리하거나 여기서 처리
+        // sttToggleBtn.textContent = '녹음 시작';
+        // sttToggleBtn.classList.remove('recording');
+        // sttToggleBtn.disabled = false;
     };
 
-    function updateTranscriptDisplay(text, role = "system") {
-      const paragraph = document.createElement('p');
-      paragraph.innerHTML = `<strong>${role === 'user' ? '민후' : role === 'assistant' ? 'AI 친구' : '시스템'}:</strong> ${text}`;
-      paragraph.classList.add(`${role}-speaker`);
-      transcriptEl.appendChild(paragraph);
-      transcriptEl.scrollTop = transcriptEl.scrollHeight;
-    }
 
-    async function startRecording() {
-      try {
-        if (!conversationStartTime) conversationStartTime = new Date();
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        await startVisualizer(canvasForVisualizer, mediaStream);
+    sttToggleBtn.addEventListener('click', async () => {
+      if (!isSttRecording) {
+        // 녹음 시작
+        logStatus("녹음 시작 버튼 클릭됨. 마이크 권한 확인 중...", false);
+        sttToggleBtn.disabled = true;
+        sttToggleBtn.textContent = '권한 확인 중...';
+        finalTranscript = ''; // 새 녹음 시작 시 초기화
+        sttResultEl.textContent = '마이크에 말씀해주세요...';
+        localStorage.removeItem('userSpeechForTest');
 
-        startSTT((text) => {
-          if (!isRecording) return;
-          if (text) {
-            localStorage.setItem('userSpeech', text);
-            updateTranscriptDisplay(text, 'user');
-            interactionBtn.disabled = false;
-          } else {
-            updateTranscriptDisplay("잘 못 들었어. 다시 한 번 말해줄래?", 'system');
-          }
-        });
+        try {
+          // navigator.mediaDevices.getUserMedia 호출하여 권한 사전 확인
+          logStatus("마이크 접근 시도...", false);
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          logStatus("✅ 마이크 접근 권한 확인됨!", false);
+          stream.getTracks().forEach(track => track.stop()); // 확인 후 즉시 스트림 닫기
+          logStatus("마이크 스트림 닫힘. STT 시작 요청...", false);
 
-        updateTranscriptDisplay("듣고 있어! 천천히 말해줘 😊", 'system');
-        isRecording = true;
-        talkBtn.textContent = '잠깐 쉬기';
-        talkBtn.classList.add('active');
-      } catch (err) {
-        console.error("녹음 오류:", err);
-        updateTranscriptDisplay("마이크를 사용할 수 없어요. 설정을 확인해주세요.", 'system');
-      }
-    }
+          // STT 시작 (stt.js 내부에서 다시 마이크 접근 시도)
+          // stt.js를 수정하여 오류 및 종료 콜백을 받을 수 있다면 전달
+          // startSTT(sttCallback, sttErrorCallback, sttEndCallback); 
+          startSTT(sttCallback); // 현재 stt.js 구조에 맞춰 콜백만 전달
 
-    function stopRecording() {
-      isRecording = false;
-      stopSTT();
-      stopVisualizer();
-      talkBtn.textContent = '대화하기';
-      talkBtn.classList.remove('active');
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
-    }
+          // stt.js 내부의 onstart 이벤트가 성공적으로 발생해야 실제 녹음 시작됨
+          // 여기서는 일단 UI 변경
+          isSttRecording = true;
+          sttToggleBtn.textContent = '녹음 중지';
+          sttToggleBtn.classList.add('recording');
+          sttToggleBtn.disabled = false; // 시작 후 중지 가능하도록 활성화
+          logStatus("STT 시작 요청 완료. 말씀해주세요.", false);
 
-    talkBtn.addEventListener('click', async () => {
-      if (!isRecording) {
-        await startRecording();
+        } catch (err) { // 마이크 권한 획득 실패
+          console.error("🎤 마이크 접근 실패:", err);
+          let errorMessage = err.message || "알 수 없는 오류";
+          if (err.name === 'NotAllowedError') errorMessage = "마이크 사용 권한이 거부되었습니다.";
+          else if (err.name === 'NotFoundError') errorMessage = "사용 가능한 마이크 장치를 찾을 수 없습니다.";
+          else if (err.name === 'NotReadableError') errorMessage = "마이크 장치를 읽을 수 없습니다.";
+          logStatus(`❌ 마이크 접근 실패: ${errorMessage}`, true);
+          sttToggleBtn.textContent = '녹음 시작';
+          sttToggleBtn.disabled = false; // 다시 시도할 수 있도록 활성화
+        }
       } else {
-        stopRecording();
-        const text = localStorage.getItem('userSpeech');
-        if (text) {
-          updateTranscriptDisplay(`"${text}" 라고 말했구나. 이제 [숨 돌리기]를 눌러볼까?`, 'system');
+        // 녹음 중지
+        logStatus("녹음 중지 버튼 클릭됨.", false);
+        stopSTT(); // STT 중지 요청
+        isSttRecording = false;
+        sttToggleBtn.textContent = '녹음 시작';
+        sttToggleBtn.classList.remove('recording');
+        sttToggleBtn.disabled = false;
+        
+        // 최종 결과 표시 (stopSTT 후 onend 이벤트가 비동기적으로 발생할 수 있으므로, 
+        // onend 콜백에서 최종 결과를 처리하는 것이 더 정확할 수 있음)
+        const lastResult = localStorage.getItem('userSpeechForTest');
+        if(lastResult) {
+            sttResultEl.textContent = `최종 인식 내용: "${lastResult}"`;
+            logStatus("녹음 중지됨. 최종 결과 표시.", false);
         } else {
-          updateTranscriptDisplay("대화를 멈췄는데 아무 말도 없었어. 다시 해볼까?", 'system');
+            sttResultEl.textContent = "녹음 중지됨. 인식된 내용 없음.";
+            logStatus("녹음 중지됨. 인식된 내용 없음.", false);
         }
-      }
-    });
-
-    interactionBtn.addEventListener('click', async () => {
-      const userText = localStorage.getItem('userSpeech');
-      if (!userText) {
-        updateTranscriptDisplay("아직 말한 게 없어. 먼저 [대화하기]로 이야기해볼래?", 'system');
-        return;
-      }
-
-      updateTranscriptDisplay("AI 친구가 생각 중이야... 🤔", 'system');
-      try {
-        const response = await getGptResponse(userText, conversationHistory);
-        localStorage.removeItem('userSpeech');
-
-        if (response?.rephrasing) updateTranscriptDisplay(response.rephrasing, 'assistant');
-        if (response?.followUpQuestion) updateTranscriptDisplay(response.followUpQuestion, 'assistant');
-
-        conversationHistory.push({ role: 'user', content: userText });
-        conversationHistory.push({ role: 'assistant', content: response.rephrasing });
-
-        if (isReadyForAnalysis()) {
-          interactionBtn.textContent = '대화 분석하기';
-          interactionBtn.classList.add('analysis-ready');
-        }
-      } catch (err) {
-        console.error("GPT 오류:", err);
-        updateTranscriptDisplay("음... 지금은 연결이 잘 안돼. 잠시 후 다시 시도해볼까?", 'system');
       }
     });
   </script>
 </body>
 </html>
+
