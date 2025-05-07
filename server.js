@@ -1,4 +1,4 @@
-// ✅ server.js (STT + GPT + Google Cloud TTS 통합 버전)
+// ✅ server.js (STT + GPT + Google Cloud TTS 통합 버전 with 마이크 UI 지원)
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
@@ -79,8 +79,13 @@ app.post('/api/tts', async (req, res) => {
   try {
     const [response] = await ttsClient.synthesizeSpeech({
       input: { text },
-      voice: { languageCode: 'ko-KR', ssmlGender: 'FEMALE' },
-      audioConfig: { audioEncoding: 'MP3' }
+      voice: {
+        languageCode: 'ko-KR',
+        name: 'ko-KR-Chirp3-HD-Aoede' // ✔️ 선택한 목소리
+      },
+      audioConfig: {
+        audioEncoding: 'MP3'
+      }
     });
 
     res.set('Content-Type', 'audio/mpeg');
