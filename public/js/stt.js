@@ -1,34 +1,61 @@
-// js/stt.js
+// 📁 public/js/stt.js (프론트엔드용 Google STT 연동 예시)
 
-let recognition;
+let mediaRecorder;
+let audioChunks = [];
 
-export function startSTT(callback) {
-  if (!('webkitSpeechRecognition' in window)) {
-    console.warn("이 브라우저는 STT를 지원하지 않습니다.");
-    callback(null);
-    return;
+export function startRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => {
+        audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const audioBase64 = arrayBufferToBase64(arrayBuffer);
+
+        const response = await fetch('/api/stt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audioContent: audioBase64 })
+        });
+
+        const result = await response.json();
+        if (result.text) {
+          console.log('🗣️ 인식된 텍스트:', result.text);
+          // 여기에 GPT 호출 연결 가능
+        } else {
+          console.error('STT 실패:', result);
+        }
+      };
+
+      mediaRecorder.start();
+      console.log('🎙️ 녹음 시작');
+    })
+    .catch(err => {
+      console.error('마이크 접근 오류:', err);
+    });
+}
+
+export function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+    console.log('🛑 녹음 중지');
   }
+}
 
-  recognition = new webkitSpeechRecognition();
-  recognition.lang = "ko-KR";
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-  recognition.continuous = false;
-
-  recognition.onstart = () => console.log("🎙️ 음성 인식 시작됨");
-  recognition.onspeechend = () => console.log("🛑 사용자 말 멈춤 감지됨");
-  recognition.onaudioend = () => console.log("🎧 오디오 스트림 종료됨");
-
-  recognition.onresult = (event) => {
-    const result = event.results?.[0]?.[0]?.transcript?.trim();
-    console.log("✅ 인식 결과:", result);
-    callback(result || null);
-  };
-
-  recognition.onerror = (event) => {
-    console.error("❌ STT 오류 발생:", event.error);
-    callback(null);
-  };
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
   recognition.onend = () => {
     console.log("🔚 인식 종료됨");
