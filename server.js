@@ -25,24 +25,41 @@ const allowedOrigins = [
   // 만약 다른 프론트엔드 주소가 있다면 여기에 추가합니다.
 ];
 
+const allowedLocalOrigins = [ // 로컬 개발용 주소는 명시적으로 관리
+  'http://127.0.0.1:5500'
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // 요청 헤더에 origin이 없거나(예: 서버 간 요청, Postman 등), 허용 목록에 포함된 경우 허용
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS')); // 허용되지 않은 출처는 에러 발생
+    // 요청 헤더에 origin이 없는 경우(Postman 등) 또는 로컬 주소인 경우 허용
+    if (!origin || allowedLocalOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
     }
+
+    // 요청 origin이 '.netlify.app'으로 끝나는지 확인하여 Netlify 관련 주소 허용
+    // URL 객체를 사용하여 안전하게 호스트네임 추출 및 검사
+    try {
+      const originUrl = new URL(origin);
+      if (originUrl.hostname.endsWith('.netlify.app')) {
+        return callback(null, true);
+      }
+    } catch (e) {
+      // origin 형식이 잘못된 경우 거부
+      console.error(`CORS: 잘못된 origin 형식 - ${origin}`);
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+
+    // 위 조건에 해당하지 않으면 허용되지 않음
+    console.error(`CORS 거부: Origin ${origin} 허용 목록에 없음`);
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // API가 사용하는 HTTP 메소드 명시
-  allowedHeaders: ['Content-Type', 'Authorization'], // 프론트엔드에서 보낼 수 있는 헤더 명시 (필요시 추가)
-  // credentials: true, // 만약 쿠키나 인증 헤더를 주고받아야 한다면 true로 설정
-  optionsSuccessStatus: 200 // 일부 오래된 브라우저 호환성
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  // credentials: true, // 필요시 주석 해제
+  optionsSuccessStatus: 200
 };
 
-// 설정된 옵션으로 cors 미들웨어를 적용합니다.
-app.use(cors(corsOptions));
-// --- CORS 설정 끝 ---
+app.use(cors(corsOptions)); // 수정된 corsOptions 적용
 
 const sttClient = new SpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
 const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
