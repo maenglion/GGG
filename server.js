@@ -1,26 +1,48 @@
-// ✅ server.js (STT + GPT + Google Cloud TTS 통합 버전)
 import express from 'express';
 import fetch from 'node-fetch';
-import cors from 'cors';
+import cors from 'cors'; // cors import 확인
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { SpeechClient } from '@google-cloud/speech';
-import textToSpeech from '@google-cloud/text-to-speech';
+// ... (다른 import 구문들) ...
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+// ... (기타 변수 설정) ...
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// --- CORS 설정 시작 ---
+// 기존 app.use(cors()); 라인은 주석 처리하거나 삭제합니다.
+// app.use(cors()); // <--- 이 라인 대신 아래 내용을 사용합니다.
+
+// 허용할 출처 목록 정의
+const allowedOrigins = [
+  'http://127.0.0.1:5500', // 로컬 개발 환경 주소
+  'https://storied-hamster-7942d1.netlify.app' // 사용자님의 Netlify 앱 주소 추가!
+  // 만약 다른 프론트엔드 주소가 있다면 여기에 추가합니다.
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // 요청 헤더에 origin이 없거나(예: 서버 간 요청, Postman 등), 허용 목록에 포함된 경우 허용
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS')); // 허용되지 않은 출처는 에러 발생
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // API가 사용하는 HTTP 메소드 명시
+  allowedHeaders: ['Content-Type', 'Authorization'], // 프론트엔드에서 보낼 수 있는 헤더 명시 (필요시 추가)
+  // credentials: true, // 만약 쿠키나 인증 헤더를 주고받아야 한다면 true로 설정
+  optionsSuccessStatus: 200 // 일부 오래된 브라우저 호환성
+};
+
+// 설정된 옵션으로 cors 미들웨어를 적용합니다.
+app.use(cors(corsOptions));
+// --- CORS 설정 끝 ---
 
 const sttClient = new SpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
 const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
