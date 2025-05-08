@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const sttClient = new SpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
 const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(GOOGLE_APPLICATION_CREDENTIALS) });
 
-// GPT
+// ✅ GPT 대화
 app.post('/api/gpt-chat', async (req, res) => {
   const { messages, model = 'gpt-4', temperature = 0.7 } = req.body;
   if (!OPENAI_API_KEY || !messages || !Array.isArray(messages)) {
@@ -49,7 +49,7 @@ app.post('/api/gpt-chat', async (req, res) => {
   }
 });
 
-// STT
+// ✅ STT 음성 → 텍스트
 app.post('/api/stt', async (req, res) => {
   const { audioContent } = req.body;
   if (!audioContent) return res.status(400).json({ error: 'audioContent 누락' });
@@ -71,7 +71,7 @@ app.post('/api/stt', async (req, res) => {
   }
 });
 
-// TTS
+// ✅ TTS 텍스트 → 음성
 app.post('/api/tts', async (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'text 누락' });
@@ -79,13 +79,8 @@ app.post('/api/tts', async (req, res) => {
   try {
     const [response] = await ttsClient.synthesizeSpeech({
       input: { text },
-      voice: {
-        languageCode: 'ko-KR',
-        name: 'ko-KR-Chirp3-HD-Aoede'
-      },
-      audioConfig: {
-        audioEncoding: 'MP3'
-      }
+      voice: { languageCode: 'ko-KR', ssmlGender: 'FEMALE' },
+      audioConfig: { audioEncoding: 'MP3' }
     });
 
     res.set('Content-Type', 'audio/mpeg');
@@ -95,7 +90,7 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
-// SPA
+// ✅ SPA 대응
 app.get('*', (req, res) => {
   const filePath = path.join(__dirname, 'public', req.path === '/' ? 'index.html' : req.path);
   res.sendFile(filePath, err => {
@@ -106,3 +101,4 @@ app.get('*', (req, res) => {
 app.listen(port, () => {
   console.log(`✅ 서버 실행 중: http://localhost:${port}`);
 });
+
