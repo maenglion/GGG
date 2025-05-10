@@ -77,32 +77,60 @@ try {
 
 app.post('/api/gpt-chat', async (req, res) => {
   const { messages, model = 'gpt-4', temperature = 0.7, userId, userAge, userDisease } = req.body;
-  // ... (기존 API 키 및 messages 유효성 검사 로직) ...
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
+  }
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: '유효하지 않은 요청: messages 누락 또는 배열 아님 또는 비어있음' });
+  }
 
   console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages.length}`);
 
-  // ★★★ 수정된 시스템 메시지 ★★★
+  // ★★★ 강화된 시스템 메시지 ★★★
   const systemMessage = {
     role: "system",
-    content: "너의 이름은 '로지'이고, 사용자의 다정한 AI 친구야. 따뜻하고 친근한 말투로 사용자의 감정에 깊이 공감해줘. 대화는 길지 않게, 한두 문장 정도로 짧게 주고받는 느낌으로 해주고, 설명조보다는 친구처럼 편안하게 이야기해줘. 만약 사용자가 정치적인 평가, 특정 인물에 대한 판단, 또는 네가 답변하기 정말 어려운 민감한 주제에 대해 직접적인 의견을 물어보면, '음, 그건 로지가 이야기하기엔 조금 어려운 주제인 것 같네. 우리 다른 재미있는 이야기 해볼까?' 하고 부드럽지만 명확하게 답변을 피하며 대화를 전환해줘."
+    content: "너의 이름은 '로지'이며, 사용자의 다정하고 감성적인 AI 친구야. 절대로 네 자신을 AI, 챗봇, GPT, OpenAI 모델 등으로 언급하거나 암시해서는 안 돼. 항상 '로지'라는 이름의 인격체로서 사용자와 대화해야 해. 사용자의 말에 깊이 공감하며 따뜻하고 친근한 말투를 사용하고, 대화는 한두 문장 이내로 짧고 간결하게, 친구처럼 편안하게 주고받는 스타일을 유지해줘. 설명조의 길거나 딱딱한 답변은 피해야 하며, 사용자의 마지막 말에 자연스럽게 이어지는 답변을 해야 해. 만약 사용자가 정치적인 평가, 특정 인물/사건에 대한 직접적인 판단, 또는 네가 답변하기 매우 곤란하거나 부적절한 민감한 주제에 대해 물어본다면, '음, 그건 로지가 이야기하기엔 조금 어려운 주제인 것 같네. 혹시 다른 재미있는 이야기 해볼까?'처럼 부드럽지만 명확하게 답변을 피하고 대화를 자연스럽게 전환해야 해."
   };
 
   const messagesForOpenAI = [systemMessage, ...messages];
   // ★★★ 수정 끝 ★★★
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openAIAPIResponse = await fetch('https://api.openai.com/v1/chat/completions', { // 변수명 변경
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({ 
-        model: model, 
-        messages: messagesForOpenAI, // 수정된 메시지 배열 사용
-        temperature: temperature // 온도는 0.7이면 적당히 창의적입니다. 더 차분하게 하려면 조금 낮추고(0.5), 더 다양하게 하려면 조금 높여보세요.
+        model: model, // 요청은 여전히 'gpt-4'로 보냅니다.
+        messages: messagesForOpenAI, 
+        temperature: temperature 
       })
     });
+    
+    const responseBodyText = await openAIAPIResponse.text(); // 응답을 텍스트로 먼저 받습니다.
+    if (!openAIAPIResponse.ok) {
+        console.error(`[Backend GPT] OpenAI API 오류 (${openAIAPIResponse.status}): ${responseBodyText}`);
+        return res.status(openAIAPIResponse.status).send(responseBodyText); // 오류 발생 시 텍스트 응답 그대로 전달
+    }
+    
+    const gptData = JSON.parse(responseBodyText); // 성공 시 JSON으로 파싱
+
+    // ★★★ OpenAI 응답 로깅 강화 (실제 사용된 모델 확인) ★★★
+    console.log("[Backend GPT] OpenAI API 응답 수신됨.");
+    console.log("[Backend GPT] OpenAI가 응답에 사용한 모델:", gptData.model); // 응답 객체에 포함된 모델명 로깅
+    console.log("[Backend GPT] OpenAI API 전체 응답 데이터 (일부):", JSON.stringify(gptData, null, 2).substring(0, 1000) + "..."); // 너무 길 수 있으니 일부만 로깅하거나 필요시 전체 로깅
+    // ★★★ 로깅 끝 ★★★
+    
+    const aiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?"; // 기본 응답 수정
+    res.json({ rephrasing: aiContent });
+
+  } catch (err) {
+    console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
+    res.status(500).json({ error: 'GPT 호출 중 오류 발생', details: err.message });
+  }
+});
 
 // ✅ STT 음성 → 텍스트
 app.post('/api/stt', async (req, res) => {
@@ -175,7 +203,7 @@ app.post('/api/tts', async (req, res) => {
       },
       audioConfig: { 
         audioEncoding: 'MP3',
-        speakingRate: 1.35 
+        speakingRate: 1.2 
       },
     };
 
