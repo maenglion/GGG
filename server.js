@@ -75,18 +75,20 @@ try {
 
 // --- API 엔드포인트 정의 ---
 
-// ✅ GPT 대화
 app.post('/api/gpt-chat', async (req, res) => {
-  const { messages, model = 'gpt-4', temperature = 0.7, userId, userAge, userDisease /* 사용자 정보 추가 */ } = req.body;
-  if (!OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
-  }
-  if (!messages || !Array.isArray(messages) || messages.length === 0 /* 빈 messages 배열 방지 */) {
-    return res.status(400).json({ error: '유효하지 않은 요청: messages 누락 또는 배열 아님 또는 비어있음' });
-  }
+  const { messages, model = 'gpt-4', temperature = 0.7, userId, userAge, userDisease } = req.body;
+  // ... (기존 API 키 및 messages 유효성 검사 로직) ...
 
-  // 사용자 정보 로깅 (개인정보에 주의)
   console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages.length}`);
+
+  // ★★★ 수정된 시스템 메시지 ★★★
+  const systemMessage = {
+    role: "system",
+    content: "너의 이름은 '로지'이고, 사용자의 다정한 AI 친구야. 따뜻하고 친근한 말투로 사용자의 감정에 깊이 공감해줘. 대화는 길지 않게, 한두 문장 정도로 짧게 주고받는 느낌으로 해주고, 설명조보다는 친구처럼 편안하게 이야기해줘. 만약 사용자가 정치적인 평가, 특정 인물에 대한 판단, 또는 네가 답변하기 정말 어려운 민감한 주제에 대해 직접적인 의견을 물어보면, '음, 그건 로지가 이야기하기엔 조금 어려운 주제인 것 같네. 우리 다른 재미있는 이야기 해볼까?' 하고 부드럽지만 명확하게 답변을 피하며 대화를 전환해줘."
+  };
+
+  const messagesForOpenAI = [systemMessage, ...messages];
+  // ★★★ 수정 끝 ★★★
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -95,24 +97,12 @@ app.post('/api/gpt-chat', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify({ model, messages, temperature })
+      body: JSON.stringify({ 
+        model: model, 
+        messages: messagesForOpenAI, // 수정된 메시지 배열 사용
+        temperature: temperature // 온도는 0.7이면 적당히 창의적입니다. 더 차분하게 하려면 조금 낮추고(0.5), 더 다양하게 하려면 조금 높여보세요.
+      })
     });
-    const responseBody = await response.text(); 
-    if (!response.ok) {
-        console.error(`[Backend GPT] OpenAI API 오류 (${response.status}): ${responseBody}`);
-        return res.status(response.status).send(responseBody);
-    }
-    
-    const gptData = JSON.parse(responseBody);
-    console.log("[Backend GPT] OpenAI API 응답 수신됨.");
-    const aiContent = gptData?.choices?.[0]?.message?.content || "죄송합니다, 답변을 이해하지 못했어요.";
-    res.json({ rephrasing: aiContent });
-
-  } catch (err) {
-    console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
-    res.status(500).json({ error: 'GPT 호출 중 오류 발생', details: err.message });
-  }
-});
 
 // ✅ STT 음성 → 텍스트
 app.post('/api/stt', async (req, res) => {
