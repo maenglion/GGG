@@ -95,9 +95,6 @@ app.post('/api/gpt-chat', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      // 사용자 정보(userAge, userDisease 등)를 시스템 프롬프트나 메시지 내용에 포함시켜 GPT에 전달할 수 있습니다.
-      // 여기서는 messages 배열을 그대로 사용합니다. 필요시 프론트엔드에서 messages 배열에 해당 정보를 추가하거나,
-      // 백엔드에서 시스템 메시지를 추가하는 로직을 구현할 수 있습니다.
       body: JSON.stringify({ model, messages, temperature })
     });
     const responseBody = await response.text(); 
@@ -108,12 +105,8 @@ app.post('/api/gpt-chat', async (req, res) => {
     
     const gptData = JSON.parse(responseBody);
     console.log("[Backend GPT] OpenAI API 응답 수신됨.");
-    // GPT 응답에서 rephrasing과 summary를 기대하는 프론트엔드 로직에 맞춰 응답 구조 조정
-    // (실제 gptData.choices[0].message.content 에 rephrasing과 summary가 함께 있는지,
-    // 아니면 별도의 로직으로 생성해야 하는지 확인 필요)
     const aiContent = gptData?.choices?.[0]?.message?.content || "죄송합니다, 답변을 이해하지 못했어요.";
-    // 임시로 rephrasing만 반환, summary 로직은 필요에 따라 추가
-    res.json({ rephrasing: aiContent /*, summary: "요약 내용 필요시 추가" */ });
+    res.json({ rephrasing: aiContent });
 
   } catch (err) {
     console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
@@ -136,28 +129,24 @@ app.post('/api/stt', async (req, res) => {
   console.log("[Backend STT] /api/stt 요청 수신됨. audioContent 앞 50자:", String(audioContent).substring(0,50) + "...");
 
   try {
-const sttRequestConfig = {
-  encoding: 'WEBM_OPUS', // 이 부분을 수정
-  // sampleRateHertz: 48000, // WEBM_OPUS 사용 시 보통 주석 처리하거나 프론트와 일치
-  languageCode: 'ko-KR',
-  enableAutomaticPunctuation: true,
-};
+    // ★★★ STT 요청 설정 수정된 부분 ★★★
+    const sttRequestConfig = {
+      encoding: 'WEBM_OPUS', // 프론트엔드 MediaRecorder와 일치 (audio/webm;codecs=opus)
+      // sampleRateHertz: 48000, // WEBM_OPUS의 경우 보통 명시하지 않거나, 필요시 원본 오디오의 샘플레이트 명시
       languageCode: 'ko-KR',
       enableAutomaticPunctuation: true, // 자동 구두점 추가
-      // model: 'latest_long', // 긴 오디오(1분 이상)의 경우 고려, 이 경우 sttClient.longRunningRecognize 사용 필요
+      // model: 'latest_long', // 긴 오디오(1분 이상)의 경우 sttClient.longRunningRecognize()와 함께 고려
     };
+    // ★★★ 수정 끝 ★★★
     console.log("[Backend STT] Google Cloud STT API 호출 시작. Config:", sttRequestConfig);
 
-    // Google STT API 호출 (짧은 오디오용. 긴 오디오는 longRunningRecognize() 사용 고려)
-    const [googleSttResponse] = await sttClient.recognize({ // 변수명을 googleSttResponse로 변경하여 명확화
-      audio: { content: audioContent }, // Base64 문자열 직접 사용
+    const [googleSttResponse] = await sttClient.recognize({
+      audio: { content: audioContent },
       config: sttRequestConfig
     });
 
-    // === ★ Google STT API의 실제 응답 전체를 로그로 출력 (추가된 부분) ★ ===
     console.log("[Backend STT] Google Cloud STT API 실제 응답 전체:", JSON.stringify(googleSttResponse, null, 2));
-    // =================================================================
-
+    
     const transcription = googleSttResponse.results && googleSttResponse.results.length > 0 && googleSttResponse.results[0].alternatives && googleSttResponse.results[0].alternatives.length > 0
         ? googleSttResponse.results.map(result => result.alternatives[0].transcript).join('\n')
         : ""; 
@@ -196,7 +185,7 @@ app.post('/api/tts', async (req, res) => {
       },
       audioConfig: { 
         audioEncoding: 'MP3',
-        speakingRate: 1.35 // 말하기 속도 (기존 코드에서 확인된 값)
+        speakingRate: 1.35 
       },
     };
 
