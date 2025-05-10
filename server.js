@@ -1,4 +1,4 @@
-// ✅ server.js (항상 longRunningRecognize 사용, GPT-4-turbo, 강화된 시스템 프롬프트 등 포함)
+// ✅ server.js (TTS 속도 1.0으로 변경, STT 관련 주석 추가 등)
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
@@ -71,7 +71,7 @@ app.post('/api/gpt-chat', async (req, res) => {
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
-  if (!messages && !isFirstChatAfterOnboarding) {
+  if (!messages && !isFirstChatAfterOnboarding) { 
     return res.status(400).json({ error: '유효하지 않은 요청: messages 누락' });
   }
   if (messages && !Array.isArray(messages)) {
@@ -138,7 +138,6 @@ app.post('/api/stt', async (req, res) => {
     return res.status(500).json({ error: 'STT 클라이언트 초기화 실패' });
   }
   
-  // 프론트엔드에서 audioDurationSeconds를 보내주면 로그에 사용, 없어도 진행 가능
   const { audioContent, audioDurationSeconds } = req.body; 
 
   if (!audioContent) {
@@ -151,10 +150,11 @@ app.post('/api/stt', async (req, res) => {
 
   try {
     const sttRequestConfig = {
-      encoding: 'WEBM_OPUS', // 프론트엔드 MediaRecorder와 일치
+      encoding: 'WEBM_OPUS', 
       languageCode: 'ko-KR',
       enableAutomaticPunctuation: true,
-      // model: 'latest_long', // 필요시 긴 오디오용 모델 지정
+      // model: 'latest_long', // 매우 긴 오디오(수 분 이상)의 경우, 또는 특정 도메인에 최적화된 모델 사용 고려
+                               // Google 문서를 참조하여 사용 가능한 모델 확인 필요
     };
     console.log("[Backend STT] Google Cloud STT API (longRunningRecognize) 호출 시작. Config:", sttRequestConfig);
 
@@ -163,10 +163,13 @@ app.post('/api/stt', async (req, res) => {
       config: sttRequestConfig,
     };
 
+    // 참고: 매우 긴 오디오(예: 1분 이상 연속)는 Base64 인코딩된 content로 직접 보내는 것보다
+    // Google Cloud Storage(GCS) URI를 사용하는 것이 Google의 권장 사항이며 더 안정적입니다.
+    // 현재 코드는 content를 직접 보내므로, 여전히 특정 길이 제한에 도달할 수 있습니다.
     const [operation] = await sttClient.longRunningRecognize(request);
     console.log("[Backend STT] longRunningRecognize operation 시작됨:", operation.name);
 
-    const [googleSttResponse] = await operation.promise(); // 작업 완료 대기
+    const [googleSttResponse] = await operation.promise(); 
     console.log("[Backend STT] longRunningRecognize 작업 완료. 실제 응답 전체:", JSON.stringify(googleSttResponse, null, 2));
     
     const transcription = googleSttResponse.results && googleSttResponse.results.length > 0 && googleSttResponse.results[0].alternatives && googleSttResponse.results[0].alternatives.length > 0
@@ -178,14 +181,17 @@ app.post('/api/stt', async (req, res) => {
 
   } catch (err) {
     console.error('[Backend STT] STT API 호출 실패 또는 처리 중 오류 (longRunningRecognize):', err);
-    res.status(500).json({ error: 'STT API 처리 중 오류 발생', details: err.message });
+    // 클라이언트에 오류 원인 전달 (Google API 오류 메시지 포함 가능)
+    res.status(500).json({ 
+        error: 'STT API 처리 중 오류 발생', 
+        details: err.message || '알 수 없는 오류' 
+    });
   }
 });
 
 
-// ✅ TTS 텍스트 → 음성 (이전과 동일)
+// ✅ TTS 텍스트 → 음성 (목소리 속도 1.0으로 고정)
 app.post('/api/tts', async (req, res) => {
-  // ... (이전 TTS 로직과 동일하게 유지) ...
   if (!ttsClient) {
       console.error("[Backend TTS] TTS 클라이언트가 초기화되지 않았습니다.");
       return res.status(500).json({ error: 'TTS 서비스를 사용할 수 없습니다. 서버 설정을 확인하세요.' });
@@ -199,16 +205,8 @@ app.post('/api/tts', async (req, res) => {
   
   console.log(`[Backend TTS] /api/tts 요청 수신. Text: "${String(text).substring(0,30)}...", Voice ID: ${voiceId}`);
 
-  let speakingRateToUse = 1.35; 
-  const voiceGroup123_IDs = ["ko-KR-Chirp3-HD-Vindemiatrix", "ko-KR-Chirp3-HD-Rasalgethi", "ko-KR-Chirp3-HD-Leda"]; 
-  const voice4_ID = "ko-KR-Chirp3-HD-Sadachbia"; 
-
-  if (voiceGroup123_IDs.includes(voiceId)) {
-    speakingRateToUse = 1.2;
-  } else if (voiceId === voice4_ID) { 
-    speakingRateToUse = 1.3;
-  } 
-
+  // ★★★ 말하기 속도를 1.0으로 고정 ★★★
+  const speakingRateToUse = 1.0; 
   console.log(`[Backend TTS] 적용될 말하기 속도: ${speakingRateToUse} (Voice ID: ${voiceId})`);
 
   try {
@@ -217,11 +215,11 @@ app.post('/api/tts', async (req, res) => {
       voice: {
         languageCode: 'ko-KR',
         ...(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { name: voiceId },
-        ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { ssmlGender: 'FEMALE' })
+        ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { ssmlGender: 'FEMALE' }) // 기본값 여성
       },
       audioConfig: { 
         audioEncoding: 'MP3',
-        speakingRate: speakingRateToUse 
+        speakingRate: speakingRateToUse // 고정된 속도 사용
       },
     };
 
