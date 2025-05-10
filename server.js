@@ -1,4 +1,4 @@
-// ✅ server.js (TTS 속도 1.0으로 변경, STT 관련 주석 추가 등)
+// ✅ server.js (TTS 속도 1.0, STT GCS 권장 주석 추가 등)
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
@@ -21,6 +21,7 @@ const __dirname = path.dirname(__filename);
 // --- CORS 설정 (이전과 동일) ---
 const allowedLocalOrigins = [
   'http://127.0.0.1:5500'
+  // 필요시 Netlify 미리보기 URL 등 추가
 ];
 const corsOptions = {
   origin: function (origin, callback) {
@@ -63,7 +64,7 @@ try {
 
 // --- API 엔드포인트 정의 ---
 
-// ✅ GPT 대화 (이전과 동일)
+// ✅ GPT 대화 (이전 강화된 시스템 프롬프트, gpt-4-turbo 모델 사용 유지)
 app.post('/api/gpt-chat', async (req, res) => {
   const { messages, model = 'gpt-4-turbo', temperature = 0.7, userId, userAge, userDisease, 
           initialUserMessage, initialUserEmotions, isFirstChatAfterOnboarding } = req.body;
@@ -71,16 +72,15 @@ app.post('/api/gpt-chat', async (req, res) => {
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
-  if (!messages && !isFirstChatAfterOnboarding) { 
-    return res.status(400).json({ error: '유효하지 않은 요청: messages 누락' });
+  // 첫인사 요청 시에는 messages가 없을 수 있으므로, isFirstChatAfterOnboarding 플래그로 분기
+  if (!isFirstChatAfterOnboarding && (!messages || !Array.isArray(messages) || messages.length === 0)) { 
+    return res.status(400).json({ error: '유효하지 않은 요청: messages 누락 또는 비어있음' });
   }
-  if (messages && !Array.isArray(messages)) {
-    return res.status(400).json({ error: '유효하지 않은 요청: messages가 배열이 아님' });
-  }
+
 
   console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages ? messages.length : 'N/A (첫인사 요청)'}`);
   if(isFirstChatAfterOnboarding) {
-    console.log(`[Backend GPT] 첫인사 요청. 감정: ${JSON.stringify(initialUserEmotions)}, 첫마디: ${initialUserMessage}`);
+    console.log(`[Backend GPT] 첫인사 요청. 감정: ${JSON.stringify(initialUserEmotions)}, 첫마디(사용자 STT): ${initialUserMessage}`);
   }
 
   let systemContent;
@@ -154,7 +154,6 @@ app.post('/api/stt', async (req, res) => {
       languageCode: 'ko-KR',
       enableAutomaticPunctuation: true,
       // model: 'latest_long', // 매우 긴 오디오(수 분 이상)의 경우, 또는 특정 도메인에 최적화된 모델 사용 고려
-                               // Google 문서를 참조하여 사용 가능한 모델 확인 필요
     };
     console.log("[Backend STT] Google Cloud STT API (longRunningRecognize) 호출 시작. Config:", sttRequestConfig);
 
@@ -163,9 +162,11 @@ app.post('/api/stt', async (req, res) => {
       config: sttRequestConfig,
     };
 
-    // 참고: 매우 긴 오디오(예: 1분 이상 연속)는 Base64 인코딩된 content로 직접 보내는 것보다
-    // Google Cloud Storage(GCS) URI를 사용하는 것이 Google의 권장 사항이며 더 안정적입니다.
-    // 현재 코드는 content를 직접 보내므로, 여전히 특정 길이 제한에 도달할 수 있습니다.
+    // ★★★ 중요: "Inline audio exceeds duration limit. Please use a GCS URI." 오류 발생 시 ★★★
+    // 이 오류는 Base64 인코딩된 오디오를 content로 직접 전송 시, Google API의 길이 제한 때문입니다.
+    // longRunningRecognize도 이 방식에는 한계가 있으며, 매우 긴 오디오(보통 1분 이상 지속)는
+    // Google Cloud Storage(GCS)에 파일을 업로드하고 그 URI를 전달하는 방식으로 변경해야 근본적으로 해결됩니다.
+    // 현재 코드는 짧은~중간 길이(최대 약 1분 내외)의 오디오에 대해서만 안정적으로 작동할 수 있습니다.
     const [operation] = await sttClient.longRunningRecognize(request);
     console.log("[Backend STT] longRunningRecognize operation 시작됨:", operation.name);
 
@@ -181,7 +182,6 @@ app.post('/api/stt', async (req, res) => {
 
   } catch (err) {
     console.error('[Backend STT] STT API 호출 실패 또는 처리 중 오류 (longRunningRecognize):', err);
-    // 클라이언트에 오류 원인 전달 (Google API 오류 메시지 포함 가능)
     res.status(500).json({ 
         error: 'STT API 처리 중 오류 발생', 
         details: err.message || '알 수 없는 오류' 
@@ -215,7 +215,7 @@ app.post('/api/tts', async (req, res) => {
       voice: {
         languageCode: 'ko-KR',
         ...(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { name: voiceId },
-        ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { ssmlGender: 'FEMALE' }) // 기본값 여성
+        ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { ssmlGender: 'FEMALE' }) 
       },
       audioConfig: { 
         audioEncoding: 'MP3',
