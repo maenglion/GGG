@@ -76,7 +76,7 @@ try {
 // --- API 엔드포인트 정의 ---
 
 app.post('/api/gpt-chat', async (req, res) => {
-  const { messages, model = 'gpt-4', temperature = 0.7, userId, userAge, userDisease } = req.body;
+  const { messages, model = 'gpt-4-turbo', temperature = 0.7, userId, userAge, userDisease } = req.body;
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
