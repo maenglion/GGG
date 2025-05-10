@@ -70,10 +70,6 @@ try {
   console.log("✅ Google Cloud 클라이언트 초기화 완료");
 } catch (error) {
   console.error("❌ Google Cloud 클라이언트 초기화 실패:", error);
-  // 클라이언트 초기화 실패 시 서버가 시작되지 않도록 처리하거나,
-  // API 호출 시 에러를 반환하도록 할 수 있습니다.
-  // 여기서는 일단 로그만 남기고 서버는 시작되도록 둡니다.
-  // API 핸들러 내부에서 클라이언트 객체가 있는지 확인하는 로직이 필요할 수 있습니다.
 }
 
 
@@ -81,13 +77,16 @@ try {
 
 // ✅ GPT 대화
 app.post('/api/gpt-chat', async (req, res) => {
-  const { messages, model = 'gpt-4', temperature = 0.7 } = req.body;
+  const { messages, model = 'gpt-4', temperature = 0.7, userId, userAge, userDisease /* 사용자 정보 추가 */ } = req.body;
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: '유효하지 않은 요청: messages 누락 또는 배열 아님' });
+  if (!messages || !Array.isArray(messages) || messages.length === 0 /* 빈 messages 배열 방지 */) {
+    return res.status(400).json({ error: '유효하지 않은 요청: messages 누락 또는 배열 아님 또는 비어있음' });
   }
+
+  // 사용자 정보 로깅 (개인정보에 주의)
+  console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages.length}`);
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -96,17 +95,28 @@ app.post('/api/gpt-chat', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
+      // 사용자 정보(userAge, userDisease 등)를 시스템 프롬프트나 메시지 내용에 포함시켜 GPT에 전달할 수 있습니다.
+      // 여기서는 messages 배열을 그대로 사용합니다. 필요시 프론트엔드에서 messages 배열에 해당 정보를 추가하거나,
+      // 백엔드에서 시스템 메시지를 추가하는 로직을 구현할 수 있습니다.
       body: JSON.stringify({ model, messages, temperature })
     });
-    const responseBody = await response.text(); // 에러 발생 시 상세 내용을 보기 위해 text()로 먼저 받음
+    const responseBody = await response.text(); 
     if (!response.ok) {
-        console.error(`GPT API 오류 (${response.status}): ${responseBody}`);
-        // OpenAI 오류 메시지를 클라이언트에 그대로 전달하거나, 가공해서 전달
+        console.error(`[Backend GPT] OpenAI API 오류 (${response.status}): ${responseBody}`);
         return res.status(response.status).send(responseBody);
     }
-    res.send(JSON.parse(responseBody)); // 성공 시 JSON으로 파싱하여 전달
+    
+    const gptData = JSON.parse(responseBody);
+    console.log("[Backend GPT] OpenAI API 응답 수신됨.");
+    // GPT 응답에서 rephrasing과 summary를 기대하는 프론트엔드 로직에 맞춰 응답 구조 조정
+    // (실제 gptData.choices[0].message.content 에 rephrasing과 summary가 함께 있는지,
+    // 아니면 별도의 로직으로 생성해야 하는지 확인 필요)
+    const aiContent = gptData?.choices?.[0]?.message?.content || "죄송합니다, 답변을 이해하지 못했어요.";
+    // 임시로 rephrasing만 반환, summary 로직은 필요에 따라 추가
+    res.json({ rephrasing: aiContent /*, summary: "요약 내용 필요시 추가" */ });
+
   } catch (err) {
-    console.error('GPT 호출 중 네트워크 또는 기타 오류:', err);
+    console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
     res.status(500).json({ error: 'GPT 호출 중 오류 발생', details: err.message });
   }
 });
@@ -114,84 +124,95 @@ app.post('/api/gpt-chat', async (req, res) => {
 // ✅ STT 음성 → 텍스트
 app.post('/api/stt', async (req, res) => {
   if (!sttClient) { // 클라이언트 초기화 실패 시
+    console.error("[Backend STT] STT 클라이언트가 초기화되지 않았습니다.");
     return res.status(500).json({ error: 'STT 서비스를 사용할 수 없습니다. 서버 설정을 확인하세요.' });
   }
   const { audioContent } = req.body; // 프론트엔드에서 Base64 인코딩된 문자열을 보낸다고 가정
-  if (!audioContent) return res.status(400).json({ error: 'audioContent 누락' });
+  if (!audioContent) {
+    console.error("[Backend STT] 요청 본문에 audioContent가 없습니다.");
+    return res.status(400).json({ error: 'audioContent 누락' });
+  }
+  
+  console.log("[Backend STT] /api/stt 요청 수신됨. audioContent 앞 50자:", String(audioContent).substring(0,50) + "...");
 
   try {
-    const [response] = await sttClient.recognize({
+    const sttRequestConfig = {
+      // 중요: 프론트엔드의 MediaRecorder가 'audio/webm;codecs=opus'로 녹음 중이므로,
+      // 백엔드 STT 설정도 이에 맞춰야 합니다.
+      encoding: 'WEBM_OPUS',      // 'LINEAR16' 대신 'WEBM_OPUS' 사용 권장
+      // sampleRateHertz: 48000,  // WEBM_OPUS 사용 시 보통 sampleRateHertz는 명시하지 않아도 됩니다.
+                                  // 명시해야 한다면 프론트엔드 녹음 원본의 샘플레이트와 일치시켜야 합니다.
+      languageCode: 'ko-KR',
+      enableAutomaticPunctuation: true, // 자동 구두점 추가
+      // model: 'latest_long', // 긴 오디오(1분 이상)의 경우 고려, 이 경우 sttClient.longRunningRecognize 사용 필요
+    };
+    console.log("[Backend STT] Google Cloud STT API 호출 시작. Config:", sttRequestConfig);
+
+    // Google STT API 호출 (짧은 오디오용. 긴 오디오는 longRunningRecognize() 사용 고려)
+    const [googleSttResponse] = await sttClient.recognize({ // 변수명을 googleSttResponse로 변경하여 명확화
       audio: { content: audioContent }, // Base64 문자열 직접 사용
-      config: {
-        // 인코딩과 샘플링 레이트는 프론트엔드 녹음 설정과 맞춰야 함 (LINEAR16은 비압축 PCM)
-        // 만약 프론트엔드가 webm/opus로 녹음한다면 encoding: 'WEBM_OPUS' 등을 고려
-        encoding: 'LINEAR16',
-        sampleRateHertz: 48000, // 프론트엔드 녹음 설정과 일치 필요
-        languageCode: 'ko-KR',
-        enableAutomaticPunctuation: true // 자동 구두점 추가
-      }
+      config: sttRequestConfig
     });
-    const transcription = response.results
-        .map(result => result.alternatives[0].transcript)
-        .join('\n');
+
+    // === ★ Google STT API의 실제 응답 전체를 로그로 출력 (추가된 부분) ★ ===
+    console.log("[Backend STT] Google Cloud STT API 실제 응답 전체:", JSON.stringify(googleSttResponse, null, 2));
+    // =================================================================
+
+    const transcription = googleSttResponse.results && googleSttResponse.results.length > 0 && googleSttResponse.results[0].alternatives && googleSttResponse.results[0].alternatives.length > 0
+        ? googleSttResponse.results.map(result => result.alternatives[0].transcript).join('\n')
+        : ""; 
+
+    console.log("[Backend STT] 최종 변환된 텍스트:", `"${transcription}"`);
     res.json({ text: transcription });
+
   } catch (err) {
-    console.error('STT 실패:', err);
-    res.status(500).json({ error: 'STT 실패', details: err.message });
+    console.error('[Backend STT] STT API 호출 실패 또는 처리 중 오류:', err);
+    res.status(500).json({ error: 'STT API 처리 중 오류 발생', details: err.message });
   }
 });
 
 // ✅ TTS 텍스트 → 음성 (목소리 선택 반영)
 app.post('/api/tts', async (req, res) => {
   if (!ttsClient) { // 클라이언트 초기화 실패 시
+      console.error("[Backend TTS] TTS 클라이언트가 초기화되지 않았습니다.");
       return res.status(500).json({ error: 'TTS 서비스를 사용할 수 없습니다. 서버 설정을 확인하세요.' });
   }
-  // 요청 본문에서 text와 voiceId (프론트엔드에서 'voice' 키로 보냄)를 추출
   const { text, voice: voiceId } = req.body;
 
-  if (!text) return res.status(400).json({ error: 'text 누락' });
+  if (!text) {
+    console.error("[Backend TTS] 요청 본문에 text가 없습니다.");
+    return res.status(400).json({ error: 'text 누락' });
+  }
+  
+  console.log(`[Backend TTS] /api/tts 요청 수신. Text: "${String(text).substring(0,30)}...", Voice ID: ${voiceId}`);
 
   try {
-    // Google Cloud TTS 요청 구성 객체 생성
     const ttsRequest = {
       input: { text: text },
-      // voice 설정: voiceId가 있으면 해당 voiceId를 'name'으로 사용, 없으면 기본값 사용
       voice: {
         languageCode: 'ko-KR',
-        // voiceId가 제공되었고 유효한 형식이라면 name으로 지정
-        // 예: 'ko-KR-Chirp3-HD-Zephyr' 같은 형식
-        ...(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR') && { name: voiceId }),
-        // voiceId가 없거나 유효하지 않으면 ssmlGender로 기본 설정 (선택 사항)
+        ...(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { name: voiceId },
         ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { ssmlGender: 'FEMALE' })
       },
-      audioConfig: { audioEncoding: 'MP3' }, // 오디오 인코딩 MP3
+      audioConfig: { 
+        audioEncoding: 'MP3',
+        speakingRate: 1.35 // 말하기 속도 (기존 코드에서 확인된 값)
+      },
     };
 
-    // console.log("TTS 요청 정보:", JSON.stringify(ttsRequest, null, 2)); // 디버깅용 로그
-
-    // Google Cloud TTS API 호출
+    console.log("[Backend TTS] Google Cloud TTS API 호출 시작. Voice Config:", JSON.stringify(ttsRequest.voice));
+    console.log("[Backend TTS] Google Cloud TTS API 호출 시작. Audio Config:", JSON.stringify(ttsRequest.audioConfig));
+    
     const [response] = await ttsClient.synthesizeSpeech(ttsRequest);
+    console.log("[Backend TTS] Google Cloud TTS API 응답 수신됨.");
 
-    // 오디오 데이터 전송
-    res.set('Content-Type', 'audio/mpeg'); // MP3 컨텐츠 타입 설정
+    res.set('Content-Type', 'audio/mpeg'); 
     res.send(response.audioContent);
   } catch (err) {
-    console.error('TTS 실패:', err); // 서버 로그에 상세 에러 기록
-    res.status(500).json({ error: 'TTS 실패', details: err.message }); // 클라이언트에는 일반적인 에러 메시지 전달
+    console.error('[Backend TTS] TTS API 호출 실패 또는 처리 중 오류:', err); 
+    res.status(500).json({ error: 'TTS API 처리 중 오류 발생', details: err.message });
   }
 });
-
-// -----------------------------------------------------------
-// --- 정적 파일 제공 및 SPA 라우팅 코드 제거 ---
-// app.use(express.static(path.join(__dirname, 'public')));
-// app.get('*', (req, res) => {
-//   const filePath = path.join(__dirname, 'public', req.path === '/' ? 'index.html' : req.path);
-//   res.sendFile(filePath, err => {
-//     if (err) res.sendFile(path.join(__dirname, 'public', 'index.html'));
-//   });
-// });
-// -----------------------------------------------------------
-
 
 // 서버 리스닝 시작
 app.listen(port, () => {
