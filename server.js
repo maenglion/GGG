@@ -136,12 +136,12 @@ app.post('/api/stt', async (req, res) => {
   console.log("[Backend STT] /api/stt 요청 수신됨. audioContent 앞 50자:", String(audioContent).substring(0,50) + "...");
 
   try {
-    const sttRequestConfig = {
-      // 중요: 프론트엔드의 MediaRecorder가 'audio/webm;codecs=opus'로 녹음 중이므로,
-      // 백엔드 STT 설정도 이에 맞춰야 합니다.
-      encoding: 'WEBM_OPUS',      // 'LINEAR16' 대신 'WEBM_OPUS' 사용 권장
-      // sampleRateHertz: 48000,  // WEBM_OPUS 사용 시 보통 sampleRateHertz는 명시하지 않아도 됩니다.
-                                  // 명시해야 한다면 프론트엔드 녹음 원본의 샘플레이트와 일치시켜야 합니다.
+const sttRequestConfig = {
+  encoding: 'WEBM_OPUS', // 이 부분을 수정
+  // sampleRateHertz: 48000, // WEBM_OPUS 사용 시 보통 주석 처리하거나 프론트와 일치
+  languageCode: 'ko-KR',
+  enableAutomaticPunctuation: true,
+};
       languageCode: 'ko-KR',
       enableAutomaticPunctuation: true, // 자동 구두점 추가
       // model: 'latest_long', // 긴 오디오(1분 이상)의 경우 고려, 이 경우 sttClient.longRunningRecognize 사용 필요
