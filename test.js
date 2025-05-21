@@ -1,5 +1,6 @@
-// test.js
-const fetch = require('node-fetch');
+// test.js 상단
+// package.json의 "type": "module" 이 필요함
+import fetch from 'node-fetch'
 
 (async () => {
   const response = await fetch('https://ggg-production.up.railway.app/api/gpt-chat', {
