@@ -123,7 +123,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     console.log("[Backend GPT] OpenAI가 응답에 사용한 모델:", gptData.model);
     
     const aiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
-    res.json({ rephrasing: aiContent });
+    res.json({ text: aiContent });
 
   } catch (err) {
     console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
