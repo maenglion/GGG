@@ -77,6 +77,19 @@ app.post('/api/gpt-chat', async (req, res) => {
     isFirstChatAfterOnboarding
   } = req.body;
 
+console.log("[1] 요청 수신됨");
+
+try {
+  console.log("[2] OpenAI 호출 시도");
+
+  const openAIAPIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    ...
+  });
+
+  console.log("[3] OpenAI 응답 수신");
+
+  const responseBodyText = await openAIAPIResponse.text();
+
   console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages ? messages.length : 'N/A (첫인사 요청)'}`);
 
   if (isFirstChatAfterOnboarding) {
