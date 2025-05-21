@@ -149,8 +149,6 @@ app.post('/api/gpt-chat', async (req, res) => {
  });
 
 
- 
-
   let systemContent;
   let messagesForOpenAI;
 
