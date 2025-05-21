@@ -148,7 +148,9 @@ try {
     console.log("[Backend GPT] OpenAI API 응답 수신됨.");
     console.log("[Backend GPT] 모델:", gptData.model);
 
-    const aiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
+   const aiContent = gptData?.choices?.[0]?.message?.content || "응답 없음";
+console.log("[4] GPT 응답 추출 완료:", aiContent);
+return res.status(200).json({ text: aiContent });
     return res.status(200).json({ text: aiContent });
 
   } catch (err) {
