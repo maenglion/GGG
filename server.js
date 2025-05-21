@@ -65,23 +65,91 @@ try {
 
 // ✅ GPT 대화 (이전과 동일)
 app.post('/api/gpt-chat', async (req, res) => {
-  const { messages, model = 'gpt-4-turbo', temperature = 0.7, userId, userAge, userDisease, 
-          initialUserMessage, initialUserEmotions, isFirstChatAfterOnboarding } = req.body;
+  const {
+    messages,
+    model = 'gpt-4-turbo',
+    temperature = 0.7,
+    userId,
+    userAge,
+    userDisease,
+    initialUserMessage,
+    initialUserEmotions,
+    isFirstChatAfterOnboarding
+  } = req.body;
+
+  console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages ? messages.length : 'N/A (첫인사 요청)'}`);
+
+  if (isFirstChatAfterOnboarding) {
+    console.log(`[Backend GPT] 첫인사 요청. 감정: ${JSON.stringify(initialUserEmotions)}, 첫마디: ${initialUserMessage}`);
+  }
 
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
-  if (!messages && !isFirstChatAfterOnboarding) { 
+
+  if (!messages && !isFirstChatAfterOnboarding) {
     return res.status(400).json({ error: '유효하지 않은 요청: messages 누락' });
   }
+
   if (messages && !Array.isArray(messages)) {
     return res.status(400).json({ error: '유효하지 않은 요청: messages가 배열이 아님' });
   }
 
-  console.log(`[Backend GPT] /api/gpt-chat 요청. UserID: ${userId}, Model: ${model}, Message count: ${messages ? messages.length : 'N/A (첫인사 요청)'}`);
-  if(isFirstChatAfterOnboarding) {
-    console.log(`[Backend GPT] 첫인사 요청. 감정: ${JSON.stringify(initialUserEmotions)}, 첫마디: ${initialUserMessage}`);
+  let systemContent;
+  let messagesForOpenAI;
+
+  if (isFirstChatAfterOnboarding && initialUserMessage && initialUserEmotions) {
+    const emotionWords = initialUserEmotions.map(e => e.sub).join(', ');
+    systemContent = `너의 이름은 '로지'이며, 사용자의 다정한 AI 친구다. 사용자는 방금 너와의 대화를 시작하며 자신의 주요 감정으로 '${emotionWords}'을(를) 선택했고, "${initialUserMessage}" 라고 첫 마디를 건넸다. 이 사용자의 감정과 첫 마디에 깊이 공감하며 따뜻하고 희망을 주는 한두 문장의 첫 응답을 해주고, 자연스럽게 다음 대화를 이어갈 수 있는 질문을 던져주렴. 절대로 네가 AI, 챗봇, GPT, OpenAI 모델임을 언급하거나 암시해서는 안 된다. 항상 '로지'로서 대화해야 한다.`;
+    messagesForOpenAI = [
+      { role: "system", content: systemContent },
+      { role: "user", content: initialUserMessage }
+    ];
+  } else {
+    systemContent = "너의 이름은 '로지'이며, 사용자의 다정하고 감성적인 AI 친구야. 절대로 네 자신을 AI, 챗봇, GPT, OpenAI 모델 등으로 언급하거나 암시해서는 안 돼. 항상 '로지'라는 이름의 인격체로서 사용자와 대화해야 해. 사용자의 말에 깊이 공감하며 따뜻하고 친근한 말투를 사용하고, 대화는 한두 문장 이내로 짧고 간결하게, 친구처럼 편안하게 주고받는 스타일을 유지해줘. 설명조의 길거나 딱딱한 답변은 피해야 하며, 사용자의 마지막 말에 자연스럽게 이어지는 답변을 해야 해. 만약 사용자가 정치적인 평가, 특정 인물/사건에 대한 직접적인 판단, 또는 네가 답변하기 매우 곤란하거나 부적절한 민감한 주제에 대해 물어본다면, '음, 그건 로지가 이야기하기엔 조금 어려운 주제인 것 같네. 혹시 다른 재미있는 이야기 해볼까?'처럼 부드럽지만 명확하게 답변을 피하고 대화를 자연스럽게 전환해야 해.";
+    messagesForOpenAI = [{ role: "system", content: systemContent }, ...(messages || [])];
   }
+
+  try {
+    const openAIAPIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: messagesForOpenAI,
+        temperature: temperature
+      })
+    });
+
+    const responseBodyText = await openAIAPIResponse.text();
+
+    if (!openAIAPIResponse.ok) {
+      console.error(`[Backend GPT] OpenAI API 오류 (${openAIAPIResponse.status}): ${responseBodyText}`);
+      return res.status(openAIAPIResponse.status).send(responseBodyText);
+    }
+
+    const gptData = JSON.parse(responseBodyText);
+    console.log("[Backend GPT] OpenAI API 응답 수신됨.");
+    console.log("[Backend GPT] 모델:", gptData.model);
+
+    const aiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
+    return res.status(200).json({ text: aiContent });
+
+  } catch (err) {
+    console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
+    return res.status(500).json({
+      error: 'GPT 호출 중 오류 발생',
+      details: err.message
+    });
+  }
+
+ });
+
+
+ 
 
   let systemContent;
   let messagesForOpenAI;
