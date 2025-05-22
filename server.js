@@ -21,7 +21,6 @@ const __dirname = path.dirname(__filename);
 // --- CORS 설정 ---
 const allowedLocalOrigins = [
   'http://127.0.0.1:5500'
-  // 필요시 다른 로컬 개발 환경 origin 추가
 ];
 const corsOptions = {
   origin: function (origin, callback) {
@@ -30,7 +29,7 @@ const corsOptions = {
     }
     try {
       const originUrl = new URL(origin);
-      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) { // Canvas 환경 추가
+      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) {
         return callback(null, true);
       }
     } catch (e) {
@@ -59,7 +58,7 @@ try {
     credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS);
   } else {
     console.warn("GOOGLE_APPLICATION_CREDENTIALS가 파일 경로일 수 있습니다. 현재는 JSON 문자열로 간주합니다. 실제 환경에 따라 수정이 필요할 수 있습니다.");
-    credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS); // 일단 JSON 파싱 시도
+    credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS);
   }
 
   sttClient = new SpeechClient({ credentials });
@@ -72,50 +71,90 @@ try {
 // --- API 엔드포인트 정의 ---
 
 app.post('/api/gpt-chat', async (req, res) => {
-  const {
-    messages, // 클라이언트에서 {role: 'user', content: '...'} 또는 {role: 'bot', content: '...'} 형태로 올 수 있음
+  let { // messages를 let으로 변경하여 재할당 가능하도록 함
+    messages,
     model = 'gpt-4-turbo',
     temperature = 0.7,
     userId,
   } = req.body;
 
-  // ★★★ 클라이언트로부터 받은 원본 messages 배열 로깅 ★★★
-  console.log("[Backend GPT] 클라이언트로부터 받은 원본 messages 배열:", JSON.stringify(messages, null, 2));
+  console.log("==========================================================");
+  console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
+  console.log("[Backend GPT] 클라이언트로부터 받은 원본 req.body.messages 타입:", typeof messages);
+  if (typeof messages === 'string') {
+    console.log("[Backend GPT] 원본 req.body.messages 내용 (문자열, 앞 200자):", messages.substring(0,200) + "...");
+  } else {
+    console.log("[Backend GPT] 원본 req.body.messages 내용 (객체/배열):", JSON.stringify(messages, null, 2));
+  }
+
 
   if (!OPENAI_API_KEY) {
     console.error("[Backend GPT] OpenAI API 키가 설정되지 않았습니다.");
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
 
-  if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    console.error("[Backend GPT] 유효하지 않은 요청: messages가 비어있거나 배열이 아님.");
-    return res.status(400).json({ error: '유효하지 않은 요청: messages가 비어있거나 배열이 아닙니다.' });
-  }
-
-  // OpenAI API로 보내기 전에 messages 배열의 role 값을 변환
-  const messagesForOpenAI = messages.map(message => {
-    if (message && message.role === 'bot') { // message 객체 존재 여부 확인 추가
-      return { ...message, role: 'assistant' };
+  // messages 타입 확인 및 JSON 파싱
+  if (typeof messages === 'string') {
+    console.log("[Backend GPT] req.body.messages가 문자열이므로 JSON.parse()를 시도합니다.");
+    try {
+      messages = JSON.parse(messages);
+      console.log("[Backend GPT] JSON.parse() 성공. messages 타입:", typeof messages, "배열 여부:", Array.isArray(messages));
+    } catch (parseError) {
+      console.error("[Backend GPT] req.body.messages 문자열 JSON 파싱 실패:", parseError);
+      return res.status(400).json({ error: '잘못된 messages 형식: JSON 문자열 파싱 실패' });
     }
-    return message;
-  }).filter(message => message && typeof message.role === 'string' && typeof message.content === 'string'); // 유효한 메시지만 필터링
-
-  // ★★★ 변환 후 messagesForOpenAI 배열과 문제가 되는 messagesForOpenAI[2] 로깅 ★★★
-  console.log("[Backend GPT] OpenAI로 전달될 messagesForOpenAI (변환 후):", JSON.stringify(messagesForOpenAI, null, 2));
-  if (messagesForOpenAI.length > 2) {
-    console.log("[Backend GPT] messagesForOpenAI[2] (변환 후) 상세:", JSON.stringify(messagesForOpenAI[2], null, 2));
-    console.log("[Backend GPT] messagesForOpenAI[2].role (변환 후):", messagesForOpenAI[2].role);
   }
 
+  // messages가 배열인지, 비어있지 않은지 최종 확인
+  if (!Array.isArray(messages) || messages.length === 0) {
+    console.error("[Backend GPT] 유효하지 않은 요청: messages가 배열이 아니거나 비어있음 (파싱 후 확인).");
+    return res.status(400).json({ error: '유효하지 않은 요청: messages가 배열이 아니거나 비어있습니다 (파싱 후 확인).' });
+  }
 
-  const payloadForOpenAI = { // OpenAI로 보낼 최종 페이로드 객체 생성
+  console.log("[Backend GPT] 최종적으로 처리할 messages 배열 (파싱 후, map 전):", JSON.stringify(messages, null, 2));
+  if (messages.length > 2) {
+    console.log("----------------------------------------------------------");
+    console.log("[Backend GPT] 처리할 messages[2] (파싱 후, map 전) 상세:", JSON.stringify(messages[2], null, 2));
+    console.log("[Backend GPT] 처리할 messages[2].role (파싱 후, map 전):", messages[2]?.role);
+    console.log("----------------------------------------------------------");
+  }
+
+  // ✅ "GPT" 제안 방식 적용: (messages || []) 및 msg?.role 사용
+  const messagesForOpenAI = (messages || []).map((msg, index) => {
+    console.log(`[Backend GPT] map 함수 처리 중: messages[${index}] 원본 role: ${msg?.role}`);
+    if (msg?.role === 'bot') { // 옵셔널 체이닝 및 null/undefined 방어
+      console.log(`[Backend GPT] messages[${index}] role 'bot'을 'assistant'로 변경합니다.`);
+      return { ...msg, role: 'assistant' };
+    }
+    return msg; // 원본 메시지 객체 반환
+  }).filter(msg => { // 유효한 메시지 객체인지 확인 후 필터링
+    const isValid = msg && typeof msg.role === 'string' && typeof msg.content === 'string';
+    if (!isValid) {
+      console.warn("[Backend GPT] filter: 유효하지 않은 형식의 메시지 제거됨:", JSON.stringify(msg, null, 2));
+    }
+    return isValid;
+  });
+
+  console.log("==========================================================");
+  console.log("[Backend GPT] OpenAI로 전달될 messagesForOpenAI (변환 및 필터링 후) 전체:");
+  console.log(JSON.stringify(messagesForOpenAI, null, 2));
+
+  if (messagesForOpenAI.length > 2) {
+    console.log("----------------------------------------------------------");
+    console.log("[Backend GPT] messagesForOpenAI[2] (변환 및 필터링 후) 상세:", JSON.stringify(messagesForOpenAI[2], null, 2));
+    console.log("[Backend GPT] messagesForOpenAI[2].role (변환 및 필터링 후):", messagesForOpenAI[2]?.role); // 이 값이 'assistant'여야 함
+    console.log("----------------------------------------------------------");
+  }
+
+  const payloadForOpenAI = {
     model: model,
-    messages: messagesForOpenAI, // ★★★ 변환된 messagesForOpenAI 사용 확인 ★★★
+    messages: messagesForOpenAI,
     temperature: temperature
   };
 
-  // ★★★ OpenAI로 전송될 최종 페이로드 전체 로깅 ★★★
-  console.log("[Backend GPT] OpenAI로 전송될 최종 페이로드 전체:", JSON.stringify(payloadForOpenAI, null, 2));
+  console.log("[Backend GPT] OpenAI로 전송될 최종 페이로드 전체 (API 호출 직전):");
+  console.log(JSON.stringify(payloadForOpenAI, null, 2));
+  console.log("==========================================================");
 
 
   try {
@@ -125,7 +164,7 @@ app.post('/api/gpt-chat', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify(payloadForOpenAI) // 최종 페이로드 객체 사용
+      body: JSON.stringify(payloadForOpenAI)
     });
 
     const responseBodyText = await openAIAPIResponse.text();
@@ -169,7 +208,6 @@ app.post('/api/stt', async (req, res) => {
   }
 
   console.log(`[Backend STT] /api/stt 요청 수신됨. 오디오 길이(프론트 제공): ${audioDurationSeconds !== undefined ? audioDurationSeconds + '초' : '정보 없음'}.`);
-  // console.log("[Backend STT] audioContent 앞 50자:", String(audioContent).substring(0,50) + "..."); // 너무 길면 로그가 지저분해질 수 있음
 
   try {
     const sttRequestConfig = {
