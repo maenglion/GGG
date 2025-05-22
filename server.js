@@ -48,6 +48,10 @@ app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '10mb' }));
 
+app.get('/', (req, res) => {
+  res.send('✅ Hello from Railway!');
+});
+
 let sttClient, ttsClient;
 try {
   if (!GOOGLE_APPLICATION_CREDENTIALS) {
