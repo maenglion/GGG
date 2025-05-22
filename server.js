@@ -54,21 +54,11 @@ try {
   if (!GOOGLE_APPLICATION_CREDENTIALS) {
     throw new Error('GOOGLE_APPLICATION_CREDENTIALS 환경 변수가 설정되지 않았습니다.');
   }
-  // GOOGLE_APPLICATION_CREDENTIALS가 파일 경로일 경우와 JSON 문자열일 경우 모두 처리
   let credentials;
   if (GOOGLE_APPLICATION_CREDENTIALS.trim().startsWith('{')) {
     credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS);
   } else {
-    // 파일 경로인 경우, 해당 경로를 직접 사용하거나,
-    // new SpeechClient() 등에 직접 경로를 전달할 수 있는지 확인 필요.
-    // 여기서는 JSON 문자열로 가정하고 진행. 실제 환경에 맞게 조정 필요.
-    // 만약 파일 경로라면, 해당 파일을 읽어서 JSON으로 파싱하는 로직이 필요할 수 있습니다.
-    // 혹은 SpeechClient, TextToSpeechClient가 keyFilename 옵션을 지원하는지 확인.
-    // 지금은 단순화를 위해 JSON 문자열이라고 가정합니다.
-    // credentials = { keyFilename: GOOGLE_APPLICATION_CREDENTIALS }; // 만약 파일 경로라면 이런 형태
-    console.warn("GOOGLE_APPLICATION_CREDENTIALS가 파일 경로일 수 있습니다. 현재는 JSON 문자열로 간주합니다.");
-    // 이 부분은 실제 환경에 따라 수정이 필요할 수 있습니다.
-    // 가장 확실한 방법은 환경 변수에 JSON 내용을 직접 넣는 것입니다.
+    console.warn("GOOGLE_APPLICATION_CREDENTIALS가 파일 경로일 수 있습니다. 현재는 JSON 문자열로 간주합니다. 실제 환경에 따라 수정이 필요할 수 있습니다.");
     credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS); // 일단 JSON 파싱 시도
   }
 
@@ -77,22 +67,19 @@ try {
   console.log("✅ Google Cloud 클라이언트 초기화 완료");
 } catch (error) {
   console.error("❌ Google Cloud 클라이언트 초기화 실패:", error);
-  // 클라이언트 초기화 실패 시 관련 API 엔드포인트에서 오류를 반환하도록 처리 필요
 }
 
 // --- API 엔드포인트 정의 ---
 
-// ✅ GPT 대화 (OpenAI API role 값 수정)
 app.post('/api/gpt-chat', async (req, res) => {
   const {
     messages, // 클라이언트에서 {role: 'user', content: '...'} 또는 {role: 'bot', content: '...'} 형태로 올 수 있음
     model = 'gpt-4-turbo',
     temperature = 0.7,
     userId,
-    // isFirstChatAfterOnboarding 등 다른 파라미터는 현재 gpt-dialog.js에서 명시적으로 보내지 않으므로,
-    // 백엔드에서 해당 로직을 사용한다면 클라이언트에서도 보내주거나, 백엔드에서 다른 방식으로 처리해야 합니다.
   } = req.body;
 
+  // ★★★ 클라이언트로부터 받은 원본 messages 배열 로깅 ★★★
   console.log("[Backend GPT] 클라이언트로부터 받은 원본 messages 배열:", JSON.stringify(messages, null, 2));
 
   if (!OPENAI_API_KEY) {
@@ -106,19 +93,29 @@ app.post('/api/gpt-chat', async (req, res) => {
   }
 
   // OpenAI API로 보내기 전에 messages 배열의 role 값을 변환
-  // 클라이언트에서 'bot'으로 보낸 role을 'assistant'로 변경
   const messagesForOpenAI = messages.map(message => {
-    if (message.role === 'bot') {
+    if (message && message.role === 'bot') { // message 객체 존재 여부 확인 추가
       return { ...message, role: 'assistant' };
     }
     return message;
-  });
+  }).filter(message => message && typeof message.role === 'string' && typeof message.content === 'string'); // 유효한 메시지만 필터링
 
-  // 시스템 프롬프트가 messagesForOpenAI 배열의 첫 번째 요소로 이미 포함되어 있다고 가정합니다.
-  // (gpt-dialog.js에서 그렇게 구성하고 있습니다)
-  // 만약 시스템 프롬프트를 별도로 관리한다면 여기서 추가해야 합니다.
+  // ★★★ 변환 후 messagesForOpenAI 배열과 문제가 되는 messagesForOpenAI[2] 로깅 ★★★
+  console.log("[Backend GPT] OpenAI로 전달될 messagesForOpenAI (변환 후):", JSON.stringify(messagesForOpenAI, null, 2));
+  if (messagesForOpenAI.length > 2) {
+    console.log("[Backend GPT] messagesForOpenAI[2] (변환 후) 상세:", JSON.stringify(messagesForOpenAI[2], null, 2));
+    console.log("[Backend GPT] messagesForOpenAI[2].role (변환 후):", messagesForOpenAI[2].role);
+  }
 
-  console.log("[Backend GPT] OpenAI API로 전달될 최종 messages:", JSON.stringify(messagesForOpenAI, null, 2));
+
+  const payloadForOpenAI = { // OpenAI로 보낼 최종 페이로드 객체 생성
+    model: model,
+    messages: messagesForOpenAI, // ★★★ 변환된 messagesForOpenAI 사용 확인 ★★★
+    temperature: temperature
+  };
+
+  // ★★★ OpenAI로 전송될 최종 페이로드 전체 로깅 ★★★
+  console.log("[Backend GPT] OpenAI로 전송될 최종 페이로드 전체:", JSON.stringify(payloadForOpenAI, null, 2));
 
 
   try {
@@ -128,23 +125,18 @@ app.post('/api/gpt-chat', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify({
-        model: model,
-        messages: messagesForOpenAI, // 변환된 messages 배열 사용
-        temperature: temperature
-      })
+      body: JSON.stringify(payloadForOpenAI) // 최종 페이로드 객체 사용
     });
 
-    const responseBodyText = await openAIAPIResponse.text(); // 응답을 먼저 텍스트로 받음
+    const responseBodyText = await openAIAPIResponse.text();
 
     if (!openAIAPIResponse.ok) {
       console.error(`[Backend GPT] OpenAI API 오류 (${openAIAPIResponse.status}): ${responseBodyText}`);
-      // 클라이언트에는 JSON 형태로 오류 메시지 전달 시도
       try {
         const errorJson = JSON.parse(responseBodyText);
         return res.status(openAIAPIResponse.status).json(errorJson);
       } catch (e) {
-        return res.status(openAIAPIResponse.status).send(responseBodyText); // JSON 파싱 실패 시 텍스트 그대로 전달
+        return res.status(openAIAPIResponse.status).send(responseBodyText);
       }
     }
 
@@ -152,12 +144,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     console.log("[Backend GPT] OpenAI API 응답 수신됨. 사용된 모델:", gptData.model);
 
     const aiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
-
-    // 현재는 분석(analysis) 객체를 생성하는 로직이 없으므로,
-    // 클라이언트의 기대에 맞추려면 빈 analysis 객체라도 추가하거나,
-    // 클라이언트에서 analysis 객체가 없을 경우를 대비해야 합니다.
-    // MVP에서는 일단 텍스트 응답만 정확히 전달하는 것에 집중합니다.
-    res.json({ text: aiContent, analysis: {} }); // 임시로 빈 analysis 객체 추가
+    res.json({ text: aiContent, analysis: {} });
 
   } catch (err) {
     console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
@@ -165,6 +152,7 @@ app.post('/api/gpt-chat', async (req, res) => {
   }
 });
 
+// ... (STT, TTS 엔드포인트 및 서버 리스닝 코드는 이전과 동일하게 유지) ...
 
 // ✅ STT 음성 → 텍스트 (항상 longRunningRecognize 사용)
 app.post('/api/stt', async (req, res) => {
@@ -181,35 +169,22 @@ app.post('/api/stt', async (req, res) => {
   }
 
   console.log(`[Backend STT] /api/stt 요청 수신됨. 오디오 길이(프론트 제공): ${audioDurationSeconds !== undefined ? audioDurationSeconds + '초' : '정보 없음'}.`);
-  console.log("[Backend STT] audioContent 앞 50자:", String(audioContent).substring(0,50) + "...");
+  // console.log("[Backend STT] audioContent 앞 50자:", String(audioContent).substring(0,50) + "..."); // 너무 길면 로그가 지저분해질 수 있음
 
   try {
     const sttRequestConfig = {
-      // encoding: 'WEBM_OPUS', // 클라이언트에서 보내는 오디오 형식에 맞춰야 함.
-                                // talk.html의 SpeechRecognition API는 브라우저 기본 형식을 사용하므로,
-                                // 서버에서 해당 형식을 지원하거나, 클라이언트에서 인코딩 필요.
-                                // 일반적으로 WEBM_OPUS 또는 LINEAR16 등이 사용됨.
-                                // Base64 디코딩 후 실제 오디오 형식 확인 필요.
-      sampleRateHertz: 16000, // 일반적인 음성 인식 샘플링 레이트, 실제 오디오와 맞춰야 함
+      sampleRateHertz: 16000,
       languageCode: 'ko-KR',
       enableAutomaticPunctuation: true,
-      // model: 'latest_long', // 필요시 모델 지정
     };
-
-    // Base64 인코딩된 오디오 데이터 디코딩
-    // 클라이언트에서 Base64 문자열로 보낸다고 가정.
-    // const audioBytes = Buffer.from(audioContent, 'base64');
 
     const request = {
       audio: {
-        content: audioContent // 클라이언트에서 이미 Base64 문자열로 보낸다면, SpeechClient가 이를 처리할 수 있음.
-                               // 만약 순수 바이너리라면 Buffer.from(audioContent, 'base64') 등이 필요.
-                               // gpt-dialog.js 또는 talk.html에서 STT 요청 시 오디오 포맷 확인 필요.
+        content: audioContent
       },
       config: sttRequestConfig,
     };
     console.log("[Backend STT] Google Cloud STT API (longRunningRecognize) 호출 시작. Config:", JSON.stringify(sttRequestConfig, null, 2));
-
 
     const [operation] = await sttClient.longRunningRecognize(request);
     console.log("[Backend STT] longRunningRecognize operation 시작됨:", operation.name);
