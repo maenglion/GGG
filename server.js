@@ -93,7 +93,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     // 백엔드에서 해당 로직을 사용한다면 클라이언트에서도 보내주거나, 백엔드에서 다른 방식으로 처리해야 합니다.
   } = req.body;
 
-  console.log(`[Backend GPT] /api/gpt-chat 요청 수신. UserID: ${userId}, Model: ${model}, Temperature: ${temperature}, Message count: ${messages ? messages.length : 'N/A'}`);
+  console.log("[Backend GPT] 클라이언트로부터 받은 원본 messages 배열:", JSON.stringify(messages, null, 2));
 
   if (!OPENAI_API_KEY) {
     console.error("[Backend GPT] OpenAI API 키가 설정되지 않았습니다.");
