@@ -296,8 +296,10 @@ app.post('/api/tts', async (req, res) => {
     res.status(500).json({ error: 'TTS API 처리 중 오류 발생', details: err.message });
   }
 });
+//예외 핸들러 
+process.on('uncaughtException', err => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection', err => console.error('Unhandled Rejection:', err));
 
 // 서버 리스닝 시작
-app.listen(port, () => {
-  console.log(`✅ 서버 실행 중: http://localhost:${port} (Railway에서는 자동으로 포트 매핑)`);
-});
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
