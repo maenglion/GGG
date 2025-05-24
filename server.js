@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SpeechClient } from '@google-cloud/speech';
 import textToSpeech from '@google-cloud/text-to-speech';
-// import express from 'express'; // ★★★ 이 중복된 라인을 삭제합니다. ★★★
+// ★★★ 중복된 'import express from 'express';' 라인이 있었다면 여기서 제거되어야 합니다. ★★★
 
 dotenv.config();
 
@@ -69,7 +69,7 @@ try {
 
   sttClient = new SpeechClient({ credentials });
   ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
-  console.log("✅ Google Cloud 클라이언트 초기화 완료");
+  console.log("✅ Google Cloud 클라이언트 초기화 완료"); // 이 로그는 정상적으로 뜨고 있습니다.
 } catch (error) {
   console.error("❌ Google Cloud 클라이언트 초기화 실패:", error);
 }
@@ -84,7 +84,8 @@ app.post('/api/gpt-chat', async (req, res) => {
     userId,
   } = req.body;
 
-  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (VERSION_XYZ) IS RUNNING !!!!!!!!!!!!!!!!!!"); // 이 로그가 보여야 최신 코드가 실행 중임을 알 수 있습니다.
+  // ★★★ 최상단 테스트 로그 (이 로그가 보여야 최신 코드가 실행 중임을 알 수 있습니다) ★★★
+  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (WITH DETAILED LOGGING) IS RUNNING !!!!!!!!!!!!!!!!!!");
   console.log("==========================================================");
   console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
   console.log("[Backend GPT] 클라이언트로부터 받은 원본 req.body.messages 타입:", typeof messages);
@@ -310,5 +311,4 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // 서버 리스닝 시작
-// const PORT = process.env.PORT || 8080; // port 변수명 변경 (이미 위에서 선언됨)
-app.listen(port, () => console.log(`🚀 Server listening on port ${port}`)); // port 변수 사용
+app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
