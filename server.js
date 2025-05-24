@@ -1,5 +1,5 @@
 // ✅ server.js (OpenAI API 'role' 값 수정, TTS 속도 1.0으로 변경, STT 관련 주석 추가 등)
-import express from 'express'; // express 모듈은 한 번만 import 합니다.
+import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -7,12 +7,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SpeechClient } from '@google-cloud/speech';
 import textToSpeech from '@google-cloud/text-to-speech';
-// ★★★ 중복된 'import express from 'express';' 라인이 있었다면 여기서 제거되어야 합니다. ★★★
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000; // Railway에서 PORT 환경변수 사용 권장
+const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
@@ -22,7 +21,6 @@ const __dirname = path.dirname(__filename);
 // --- CORS 설정 ---
 const allowedLocalOrigins = [
   'http://127.0.0.1:5500'
-  // 필요시 다른 로컬 개발 환경 origin 추가
 ];
 const corsOptions = {
   origin: function (origin, callback) {
@@ -31,7 +29,7 @@ const corsOptions = {
     }
     try {
       const originUrl = new URL(origin);
-      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) { // Canvas 환경 추가
+      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) {
         return callback(null, true);
       }
     } catch (e) {
@@ -69,7 +67,7 @@ try {
 
   sttClient = new SpeechClient({ credentials });
   ttsClient = new textToSpeech.TextToSpeechClient({ credentials });
-  console.log("✅ Google Cloud 클라이언트 초기화 완료"); // 이 로그는 정상적으로 뜨고 있습니다.
+  console.log("✅ Google Cloud 클라이언트 초기화 완료");
 } catch (error) {
   console.error("❌ Google Cloud 클라이언트 초기화 실패:", error);
 }
@@ -84,8 +82,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     userId,
   } = req.body;
 
-  // ★★★ 최상단 테스트 로그 (이 로그가 보여야 최신 코드가 실행 중임을 알 수 있습니다) ★★★
-  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (WITH DETAILED LOGGING) IS RUNNING !!!!!!!!!!!!!!!!!!");
+  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (ROLE CHECK ENHANCED) IS RUNNING !!!!!!!!!!!!!!!!!!");
   console.log("==========================================================");
   console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
   console.log("[Backend GPT] 클라이언트로부터 받은 원본 req.body.messages 타입:", typeof messages);
@@ -95,13 +92,11 @@ app.post('/api/gpt-chat', async (req, res) => {
     console.log("[Backend GPT] 원본 req.body.messages 내용 (객체/배열):", JSON.stringify(messages, null, 2));
   }
 
-
   if (!OPENAI_API_KEY) {
     console.error("[Backend GPT] OpenAI API 키가 설정되지 않았습니다.");
     return res.status(500).json({ error: 'OpenAI API 키가 설정되지 않았습니다.' });
   }
 
-  // messages 타입 확인 및 JSON 파싱
   if (typeof messages === 'string') {
     console.log("[Backend GPT] req.body.messages가 문자열이므로 JSON.parse()를 시도합니다.");
     try {
@@ -113,7 +108,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     }
   }
 
-  if (!Array.isArray(messages) || messages.length === 0) { // 파싱 후에도 배열이 아니거나 비어있으면 오류 처리
+  if (!Array.isArray(messages) || messages.length === 0) {
     console.error("[Backend GPT] 유효하지 않은 요청: messages가 배열이 아니거나 비어있음 (파싱 후 확인).");
     return res.status(400).json({ error: '유효하지 않은 요청: messages가 배열이 아니거나 비어있습니다 (파싱 후 확인).' });
   }
@@ -127,29 +122,32 @@ app.post('/api/gpt-chat', async (req, res) => {
   }
 
   const messagesForOpenAI = (messages || []).map((msg, index) => {
-    console.log(`[Backend GPT] map 함수 처리 중: messages[${index}] 원본 role: ${msg?.role}`);
-    if (msg?.role === 'bot') {
-      console.log(`[Backend GPT] messages[${index}] role 'bot'을 'assistant'로 변경합니다.`);
+    // console.log(`[Backend GPT] map 함수 처리 중: messages[${index}] 원본 role: ${msg?.role}`);
+    if (msg && msg.role === 'bot') {
+      // console.log(`[Backend GPT] messages[${index}] role 'bot'을 'assistant'로 변경합니다.`);
       return { ...msg, role: 'assistant' };
     }
     return msg;
   }).filter(msg => {
     const isValid = msg && typeof msg.role === 'string' && typeof msg.content === 'string';
-    if (!isValid) {
-      console.warn("[Backend GPT] filter: 유효하지 않은 형식의 메시지 제거됨:", JSON.stringify(msg, null, 2));
-    }
+    // if (!isValid) {
+    //   console.warn("[Backend GPT] filter: 유효하지 않은 형식의 메시지 제거됨:", JSON.stringify(msg, null, 2));
+    // }
     return isValid;
   });
 
-  console.log("==========================================================");
-  console.log("[Backend GPT] OpenAI로 전달될 messagesForOpenAI (변환 및 필터링 후) 전체:");
-  console.log(JSON.stringify(messagesForOpenAI, null, 2));
+  console.log("[Backend GPT] OpenAI로 전달될 messagesForOpenAI (map 및 filter 후) 전체:", JSON.stringify(messagesForOpenAI, null, 2));
 
+  // ★★★ messagesForOpenAI[2]의 role 값 최종 확인 및 강제 변환 (디버깅 목적) ★★★
   if (messagesForOpenAI.length > 2) {
     console.log("----------------------------------------------------------");
-    console.log("[Backend GPT] messagesForOpenAI[2] (변환 및 필터링 후) 상세:");
-    console.log(JSON.stringify(messagesForOpenAI[2], null, 2));
-    console.log("[Backend GPT] messagesForOpenAI[2].role (변환 및 필터링 후):", messagesForOpenAI[2]?.role);
+    console.log("[Backend GPT] messagesForOpenAI[2] (map/filter 후) 상세:", JSON.stringify(messagesForOpenAI[2], null, 2));
+    console.log("[Backend GPT] messagesForOpenAI[2].role (map/filter 후):", messagesForOpenAI[2]?.role);
+    if (messagesForOpenAI[2] && messagesForOpenAI[2].role === 'bot') {
+      console.warn("!!!!!!!!!!!!!!!!! [Backend GPT] WARNING: messagesForOpenAI[2].role이 여전히 'bot'입니다. 강제로 'assistant'로 변경합니다. !!!!!!!!!!!!!!!!!!");
+      messagesForOpenAI[2].role = 'assistant';
+      console.log("[Backend GPT] messagesForOpenAI[2].role (강제 변환 후):", messagesForOpenAI[2]?.role);
+    }
     console.log("----------------------------------------------------------");
   }
 
@@ -162,7 +160,6 @@ app.post('/api/gpt-chat', async (req, res) => {
   console.log("[Backend GPT] OpenAI로 전송될 최종 페이로드 전체 (API 호출 직전):");
   console.log(JSON.stringify(payloadForOpenAI, null, 2));
   console.log("==========================================================");
-
 
   try {
     const openAIAPIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
