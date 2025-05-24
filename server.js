@@ -82,7 +82,6 @@ app.post('/api/gpt-chat', async (req, res) => {
     temperature = 0.7,
     userId,
   } = req.body;
-
   console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (VERSION_XYZ) IS RUNNING !!!!!!!!!!!!!!!!!!"); // XYZ는 테스트 버전 번호
   console.log("==========================================================");
   console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
