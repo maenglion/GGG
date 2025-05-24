@@ -1,5 +1,5 @@
 // ✅ server.js (OpenAI API 'role' 값 수정, TTS 속도 1.0으로 변경, STT 관련 주석 추가 등)
-import express from 'express';
+import express from 'express'; // express 모듈은 한 번만 import 합니다.
 import fetch from 'node-fetch';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -7,12 +7,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SpeechClient } from '@google-cloud/speech';
 import textToSpeech from '@google-cloud/text-to-speech';
-import express from 'express';
+// import express from 'express'; // ★★★ 이 중복된 라인을 삭제합니다. ★★★
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3000; // Railway에서 PORT 환경변수 사용 권장
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
@@ -22,6 +22,7 @@ const __dirname = path.dirname(__filename);
 // --- CORS 설정 ---
 const allowedLocalOrigins = [
   'http://127.0.0.1:5500'
+  // 필요시 다른 로컬 개발 환경 origin 추가
 ];
 const corsOptions = {
   origin: function (origin, callback) {
@@ -30,7 +31,7 @@ const corsOptions = {
     }
     try {
       const originUrl = new URL(origin);
-      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) {
+      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) { // Canvas 환경 추가
         return callback(null, true);
       }
     } catch (e) {
@@ -82,7 +83,8 @@ app.post('/api/gpt-chat', async (req, res) => {
     temperature = 0.7,
     userId,
   } = req.body;
-  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (VERSION_XYZ) IS RUNNING !!!!!!!!!!!!!!!!!!"); // XYZ는 테스트 버전 번호
+
+  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (VERSION_XYZ) IS RUNNING !!!!!!!!!!!!!!!!!!"); // 이 로그가 보여야 최신 코드가 실행 중임을 알 수 있습니다.
   console.log("==========================================================");
   console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
   console.log("[Backend GPT] 클라이언트로부터 받은 원본 req.body.messages 타입:", typeof messages);
@@ -110,8 +112,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     }
   }
 
-  // messages가 배열인지, 비어있지 않은지 최종 확인
-  if (!Array.isArray(messages) || messages.length === 0) {
+  if (!Array.isArray(messages) || messages.length === 0) { // 파싱 후에도 배열이 아니거나 비어있으면 오류 처리
     console.error("[Backend GPT] 유효하지 않은 요청: messages가 배열이 아니거나 비어있음 (파싱 후 확인).");
     return res.status(400).json({ error: '유효하지 않은 요청: messages가 배열이 아니거나 비어있습니다 (파싱 후 확인).' });
   }
@@ -124,15 +125,14 @@ app.post('/api/gpt-chat', async (req, res) => {
     console.log("----------------------------------------------------------");
   }
 
-  // ✅ "GPT" 제안 방식 적용: (messages || []) 및 msg?.role 사용
   const messagesForOpenAI = (messages || []).map((msg, index) => {
     console.log(`[Backend GPT] map 함수 처리 중: messages[${index}] 원본 role: ${msg?.role}`);
-    if (msg?.role === 'bot') { // 옵셔널 체이닝 및 null/undefined 방어
+    if (msg?.role === 'bot') {
       console.log(`[Backend GPT] messages[${index}] role 'bot'을 'assistant'로 변경합니다.`);
       return { ...msg, role: 'assistant' };
     }
-    return msg; // 원본 메시지 객체 반환
-  }).filter(msg => { // 유효한 메시지 객체인지 확인 후 필터링
+    return msg;
+  }).filter(msg => {
     const isValid = msg && typeof msg.role === 'string' && typeof msg.content === 'string';
     if (!isValid) {
       console.warn("[Backend GPT] filter: 유효하지 않은 형식의 메시지 제거됨:", JSON.stringify(msg, null, 2));
@@ -146,8 +146,9 @@ app.post('/api/gpt-chat', async (req, res) => {
 
   if (messagesForOpenAI.length > 2) {
     console.log("----------------------------------------------------------");
-    console.log("[Backend GPT] messagesForOpenAI[2] (변환 및 필터링 후) 상세:", JSON.stringify(messagesForOpenAI[2], null, 2));
-    console.log("[Backend GPT] messagesForOpenAI[2].role (변환 및 필터링 후):", messagesForOpenAI[2]?.role); // 이 값이 'assistant'여야 함
+    console.log("[Backend GPT] messagesForOpenAI[2] (변환 및 필터링 후) 상세:");
+    console.log(JSON.stringify(messagesForOpenAI[2], null, 2));
+    console.log("[Backend GPT] messagesForOpenAI[2].role (변환 및 필터링 후):", messagesForOpenAI[2]?.role);
     console.log("----------------------------------------------------------");
   }
 
@@ -297,10 +298,17 @@ app.post('/api/tts', async (req, res) => {
     res.status(500).json({ error: 'TTS API 처리 중 오류 발생', details: err.message });
   }
 });
-//예외 핸들러 
-process.on('uncaughtException', err => console.error('Uncaught Exception:', err));
-process.on('unhandledRejection', err => console.error('Unhandled Rejection:', err));
+//예외 핸들러
+process.on('uncaughtException', err => {
+  console.error('!!!!!!!!!!!! Uncaught Exception:', err);
+  process.exit(1); // 필수: 예외 발생 후 프로세스 종료
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('!!!!!!!!!!!! Unhandled Rejection at:', promise, 'reason:', reason);
+  // 애플리케이션 로직에 따라, 여기서도 프로세스를 종료할 수 있습니다.
+  // process.exit(1);
+});
 
 // 서버 리스닝 시작
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
+// const PORT = process.env.PORT || 8080; // port 변수명 변경 (이미 위에서 선언됨)
+app.listen(port, () => console.log(`🚀 Server listening on port ${port}`)); // port 변수 사용
