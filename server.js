@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SpeechClient } from '@google-cloud/speech';
 import textToSpeech from '@google-cloud/text-to-speech';
+import express from 'express';
 
 dotenv.config();
 
@@ -82,6 +83,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     userId,
   } = req.body;
 
+  console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (VERSION_XYZ) IS RUNNING !!!!!!!!!!!!!!!!!!"); // XYZ는 테스트 버전 번호
   console.log("==========================================================");
   console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
   console.log("[Backend GPT] 클라이언트로부터 받은 원본 req.body.messages 타입:", typeof messages);
