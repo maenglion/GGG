@@ -74,8 +74,9 @@ try {
 
 // --- API 엔드포인트 정의 ---
 
+// 1) GPT-Chat 핸들러 시작
 app.post('/api/gpt-chat', async (req, res) => {
-  let { // messages를 let으로 변경하여 재할당 가능하도록 함
+  let { 
     messages,
     model = 'gpt-4-turbo',
     temperature = 0.7,
@@ -151,7 +152,7 @@ app.post('/api/gpt-chat', async (req, res) => {
     console.log("----------------------------------------------------------");
   }
 
-  const payloadForOpenAI = {
+ const payloadForOpenAI = {
     model: model,
     messages: messagesForOpenAI,
     temperature: temperature
@@ -186,15 +187,31 @@ app.post('/api/gpt-chat', async (req, res) => {
     const gptData = JSON.parse(responseBodyText);
     console.log("[Backend GPT] OpenAI API 응답 수신됨. 사용된 모델:", gptData.model);
 
-    const aiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
-    res.json({ text: aiContent, analysis: {} });
+    const rawAiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
 
+    let cleanText = rawAiContent;
+    let parsedAnalysisData = {};
+
+// gpt-dialog.js에서 GPT에게 요청한 JSON 패턴을 여기서도 찾아 파싱
+// 예: "summaryTitle", "conversationSummary", "keywords" 등을 포함하는 JSON
+const analysisJsonPattern = /({"summaryTitle":.*?})/s;
+    const match = rawAiContent.match(analysisJsonPattern);
+    if (match && match[1]) {
+      try {
+        parsedAnalysisData = JSON.parse(match[1]);
+        console.log("[Backend GPT] GPT 응답에서 분석 JSON 파싱 성공:", parsedAnalysisData);
+      } catch (e) {
+        console.error("[Backend GPT] GPT 응답 내 분석 JSON 파싱 오류:", e);
+      }
+    }
+
+    res.json({ text: cleanText, analysis: parsedAnalysisData }); 
   } catch (err) {
-    console.error('[Backend GPT] GPT 호출 중 네트워크 또는 기타 오류:', err);
-    res.status(500).json({ error: 'GPT 호출 중 오류 발생', details: err.message });
+    console.error("[Backend GPT] OpenAI API 호출 실패:", err);
+    return res.status(500).json({ error: 'OpenAI API 호출 중 오류 발생', details: err.message });
   }
 });
-
+  
 // ... (STT, TTS 엔드포인트 및 서버 리스닝 코드는 이전과 동일하게 유지) ...
 
 // ✅ STT 음성 → 텍스트 (항상 longRunningRecognize 사용)
