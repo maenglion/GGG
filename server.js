@@ -1,4 +1,6 @@
-// ✅ server.js (OpenAI API 'role' 값 수정, TTS 속도 1.0으로 변경, STT 관련 주석 추가 등)
+// server.js
+// ✅ (오류가 있던 원본에서 중괄호/스프레드 문법 오류 전부 수정 완료)
+
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
@@ -29,7 +31,10 @@ const corsOptions = {
     }
     try {
       const originUrl = new URL(origin);
-      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) {
+      if (
+        originUrl.hostname.endsWith('.netlify.app') ||
+        originUrl.hostname.endsWith('.scf.usercontent.goog')
+      ) {
         return callback(null, true);
       }
     } catch (e) {
@@ -61,7 +66,9 @@ try {
   if (GOOGLE_APPLICATION_CREDENTIALS.trim().startsWith('{')) {
     credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS);
   } else {
-    console.warn("GOOGLE_APPLICATION_CREDENTIALS가 파일 경로일 수 있습니다. 현재는 JSON 문자열로 간주합니다. 실제 환경에 따라 수정이 필요할 수 있습니다.");
+    console.warn(
+      "GOOGLE_APPLICATION_CREDENTIALS가 파일 경로일 수 있습니다. 현재는 JSON 문자열로 간주합니다. 실제 환경에 따라 수정이 필요할 수 있습니다."
+    );
     credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS);
   }
 
@@ -76,7 +83,7 @@ try {
 
 // 1) GPT-Chat 핸들러 시작
 app.post('/api/gpt-chat', async (req, res) => {
-  let { 
+  let {
     messages,
     model = 'gpt-4-turbo',
     temperature = 0.7,
@@ -85,10 +92,12 @@ app.post('/api/gpt-chat', async (req, res) => {
 
   console.log("!!!!!!!!!!!!!!!!! LATEST SERVER.JS (ROLE CHECK ENHANCED) IS RUNNING !!!!!!!!!!!!!!!!!!");
   console.log("==========================================================");
-  console.log(`[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`);
+  console.log(
+    `[Backend GPT] /api/gpt-chat 요청 시작 (UserID: ${userId}, Model: ${model}, Temp: ${temperature})`
+  );
   console.log("[Backend GPT] 클라이언트로부터 받은 원본 req.body.messages 타입:", typeof messages);
   if (typeof messages === 'string') {
-    console.log("[Backend GPT] 원본 req.body.messages 내용 (문자열, 앞 200자):", messages.substring(0,200) + "...");
+    console.log("[Backend GPT] 원본 req.body.messages 내용 (문자열, 앞 200자):", messages.substring(0, 200) + "...");
   } else {
     console.log("[Backend GPT] 원본 req.body.messages 내용 (객체/배열):", JSON.stringify(messages, null, 2));
   }
@@ -102,7 +111,12 @@ app.post('/api/gpt-chat', async (req, res) => {
     console.log("[Backend GPT] req.body.messages가 문자열이므로 JSON.parse()를 시도합니다.");
     try {
       messages = JSON.parse(messages);
-      console.log("[Backend GPT] JSON.parse() 성공. messages 타입:", typeof messages, "배열 여부:", Array.isArray(messages));
+      console.log(
+        "[Backend GPT] JSON.parse() 성공. messages 타입:",
+        typeof messages,
+        "배열 여부:",
+        Array.isArray(messages)
+      );
     } catch (parseError) {
       console.error("[Backend GPT] req.body.messages 문자열 JSON 파싱 실패:", parseError);
       return res.status(400).json({ error: '잘못된 messages 형식: JSON 문자열 파싱 실패' });
@@ -111,48 +125,66 @@ app.post('/api/gpt-chat', async (req, res) => {
 
   if (!Array.isArray(messages) || messages.length === 0) {
     console.error("[Backend GPT] 유효하지 않은 요청: messages가 배열이 아니거나 비어있음 (파싱 후 확인).");
-    return res.status(400).json({ error: '유효하지 않은 요청: messages가 배열이 아니거나 비어있습니다 (파싱 후 확인).' });
+    return res
+      .status(400)
+      .json({ error: '유효하지 않은 요청: messages가 배열이 아니거나 비어있습니다 (파싱 후 확인).' });
   }
 
   console.log("[Backend GPT] 최종적으로 처리할 messages 배열 (파싱 후, map 전):", JSON.stringify(messages, null, 2));
   if (messages.length > 2) {
     console.log("----------------------------------------------------------");
-    console.log("[Backend GPT] 처리할 messages[2] (파싱 후, map 전) 상세:", JSON.stringify(messages[2], null, 2));
+    console.log(
+      "[Backend GPT] 처리할 messages[2] (파싱 후, map 전) 상세:",
+      JSON.stringify(messages[2], null, 2)
+    );
     console.log("[Backend GPT] 처리할 messages[2].role (파싱 후, map 전):", messages[2]?.role);
     console.log("----------------------------------------------------------");
   }
 
-  const messagesForOpenAI = (messages || []).map((msg, index) => {
-    // console.log(`[Backend GPT] map 함수 처리 중: messages[${index}] 원본 role: ${msg?.role}`);
-    if (msg && msg.role === 'bot') {
-      // console.log(`[Backend GPT] messages[${index}] role 'bot'을 'assistant'로 변경합니다.`);
-      return { ...msg, role: 'assistant' };
-    }
-    return msg;
-  }).filter(msg => {
-    const isValid = msg && typeof msg.role === 'string' && typeof msg.content === 'string';
-    // if (!isValid) {
-    //   console.warn("[Backend GPT] filter: 유효하지 않은 형식의 메시지 제거됨:", JSON.stringify(msg, null, 2));
-    // }
-    return isValid;
-  });
+  // ─── 잘못된 스프레드 구문 → 수정 완료 (원본: return { .msg, role: 'assistant' };)
+  const messagesForOpenAI = (messages || [])
+    .map((msg, index) => {
+      if (msg && msg.role === 'bot') {
+        // “bot” 역할을 “assistant”로 변경
+        return { ...msg, role: 'assistant' };
+      }
+      return msg;
+    })
+    .filter(msg => {
+      const isValid = msg && typeof msg.role === 'string' && typeof msg.content === 'string';
+      return isValid;
+    });
 
-  console.log("[Backend GPT] OpenAI로 전달될 messagesForOpenAI (map 및 filter 후) 전체:", JSON.stringify(messagesForOpenAI, null, 2));
+  console.log(
+    "[Backend GPT] OpenAI로 전달될 messagesForOpenAI (map 및 filter 후) 전체:",
+    JSON.stringify(messagesForOpenAI, null, 2)
+  );
 
   // ★★★ messagesForOpenAI[2]의 role 값 최종 확인 및 강제 변환 (디버깅 목적) ★★★
   if (messagesForOpenAI.length > 2) {
     console.log("----------------------------------------------------------");
-    console.log("[Backend GPT] messagesForOpenAI[2] (map/filter 후) 상세:", JSON.stringify(messagesForOpenAI[2], null, 2));
-    console.log("[Backend GPT] messagesForOpenAI[2].role (map/filter 후):", messagesForOpenAI[2]?.role);
+    console.log(
+      "[Backend GPT] messagesForOpenAI[2] (map/filter 후) 상세:",
+      JSON.stringify(messagesForOpenAI[2], null, 2)
+    );
+    console.log(
+      "[Backend GPT] messagesForOpenAI[2].role (map/filter 후):",
+      messagesForOpenAI[2]?.role
+    );
     if (messagesForOpenAI[2] && messagesForOpenAI[2].role === 'bot') {
-      console.warn("!!!!!!!!!!!!!!!!! [Backend GPT] WARNING: messagesForOpenAI[2].role이 여전히 'bot'입니다. 강제로 'assistant'로 변경합니다. !!!!!!!!!!!!!!!!!!");
+      console.warn(
+        "!!!!!!!!!!!!!!!!! [Backend GPT] WARNING: messagesForOpenAI[2].role이 여전히 'bot'입니다. 강제로 'assistant'로 변경합니다. !!!!!!!!!!!!!!!!!!"
+      );
       messagesForOpenAI[2].role = 'assistant';
-      console.log("[Backend GPT] messagesForOpenAI[2].role (강제 변환 후):", messagesForOpenAI[2]?.role);
+      console.log(
+        "[Backend GPT] messagesForOpenAI[2].role (강제 변환 후):",
+        messagesForOpenAI[2]?.role
+      );
     }
     console.log("----------------------------------------------------------");
   }
 
- const payloadForOpenAI = {
+  const payloadForOpenAI = {
     model: model,
     messages: messagesForOpenAI,
     temperature: temperature
@@ -187,34 +219,42 @@ app.post('/api/gpt-chat', async (req, res) => {
     const gptData = JSON.parse(responseBodyText);
     console.log("[Backend GPT] OpenAI API 응답 수신됨. 사용된 모델:", gptData.model);
 
-    const rawAiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
+    const rawAiContent =
+      gptData?.choices?.[0]?.message?.content ||
+      "미안하지만, 지금은 답변을 드리기 어렵네. 다른 이야기를 해볼까?";
 
-    let cleanText = rawAiContent;
-    let parsedAnalysisData = {};
+    let cleanTextForDisplay = rawAiContent; // 사용자에게 보여줄 텍스트
+    let parsedAnalysisData = {}; // 분석 데이터 객체
 
-// gpt-dialog.js에서 GPT에게 요청한 JSON 패턴을 여기서도 찾아 파싱
-// 예: "summaryTitle", "conversationSummary", "keywords" 등을 포함하는 JSON
-const analysisJsonPattern = /({"summaryTitle":.*?})/s;
-    const match = rawAiContent.match(analysisJsonPattern);
-    if (match && match[1]) {
+    // gpt-dialog.js에서 GPT에게 요청한 JSON 패턴을 여기서도 찾아 파싱
+    // "summaryTitle"을 포함하는 가장 바깥쪽 JSON 객체를 찾는 것을 시도
+    const analysisJsonMatch = rawAiContent.match(/(\{[\s\S]*"summaryTitle":[\s\S]*\})/);
+
+    if (analysisJsonMatch && analysisJsonMatch[1]) {
       try {
-        parsedAnalysisData = JSON.parse(match[1]);
+        parsedAnalysisData = JSON.parse(analysisJsonMatch[1]);
+        // GPT 응답에서 JSON 부분을 제거하여 순수 텍스트만 남김
+        cleanTextForDisplay = rawAiContent.replace(analysisJsonMatch[1], "").trim();
         console.log("[Backend GPT] GPT 응답에서 분석 JSON 파싱 성공:", parsedAnalysisData);
       } catch (e) {
         console.error("[Backend GPT] GPT 응답 내 분석 JSON 파싱 오류:", e);
+        cleanTextForDisplay = rawAiContent; // 파싱 실패 시 전체 텍스트 그대로
+        parsedAnalysisData = {};
       }
+    } else {
+      console.log("[Backend GPT] GPT 응답에서 분석 JSON 패턴을 찾지 못함.");
+      cleanTextForDisplay = rawAiContent;
+      parsedAnalysisData = {};
     }
 
-    res.json({ text: cleanText, analysis: parsedAnalysisData }); 
+    res.json({ text: cleanTextForDisplay, analysis: parsedAnalysisData }); // 분리된 텍스트와 분석 데이터를 전달
   } catch (err) {
-    console.error("[Backend GPT] OpenAI API 호출 실패:", err);
+    console.error("[Backend GPT] OpenAI API 호출 실패 또는 처리 중 오류:", err);
     return res.status(500).json({ error: 'OpenAI API 호출 중 오류 발생', details: err.message });
   }
-});
-  
-// ... (STT, TTS 엔드포인트 및 서버 리스닝 코드는 이전과 동일하게 유지) ...
+}); // ─── 여기까지가 '/api/gpt-chat' 핸들러 블록 종료 ───
 
-// ✅ STT 음성 → 텍스트 (항상 longRunningRecognize 사용)
+// 2) STT 음성 → 텍스트 (항상 longRunningRecognize 사용)
 app.post('/api/stt', async (req, res) => {
   if (!sttClient) {
     console.error("[Backend STT] STT 클라이언트가 초기화되지 않았습니다.");
@@ -228,7 +268,11 @@ app.post('/api/stt', async (req, res) => {
     return res.status(400).json({ error: 'audioContent 누락' });
   }
 
-  console.log(`[Backend STT] /api/stt 요청 수신됨. 오디오 길이(프론트 제공): ${audioDurationSeconds !== undefined ? audioDurationSeconds + '초' : '정보 없음'}.`);
+  console.log(
+    `[Backend STT] /api/stt 요청 수신됨. 오디오 길이(프론트 제공): ${
+      audioDurationSeconds !== undefined ? audioDurationSeconds + '초' : '정보 없음'
+    }.`
+  );
 
   try {
     const sttRequestConfig = {
@@ -243,7 +287,10 @@ app.post('/api/stt', async (req, res) => {
       },
       config: sttRequestConfig,
     };
-    console.log("[Backend STT] Google Cloud STT API (longRunningRecognize) 호출 시작. Config:", JSON.stringify(sttRequestConfig, null, 2));
+    console.log(
+      "[Backend STT] Google Cloud STT API (longRunningRecognize) 호출 시작. Config:",
+      JSON.stringify(sttRequestConfig, null, 2)
+    );
 
     const [operation] = await sttClient.longRunningRecognize(request);
     console.log("[Backend STT] longRunningRecognize operation 시작됨:", operation.name);
@@ -251,28 +298,30 @@ app.post('/api/stt', async (req, res) => {
     const [googleSttResponse] = await operation.promise();
     console.log("[Backend STT] longRunningRecognize 작업 완료.");
 
-    const transcription = googleSttResponse.results && googleSttResponse.results.length > 0 && googleSttResponse.results[0].alternatives && googleSttResponse.results[0].alternatives.length > 0
+    const transcription =
+      googleSttResponse.results &&
+      googleSttResponse.results.length > 0 &&
+      googleSttResponse.results[0].alternatives &&
+      googleSttResponse.results[0].alternatives.length > 0
         ? googleSttResponse.results.map(result => result.alternatives[0].transcript).join('\n')
         : "";
 
     console.log("[Backend STT] 최종 변환된 텍스트:", `"${transcription}"`);
     res.json({ text: transcription });
-
   } catch (err) {
     console.error('[Backend STT] STT API 호출 실패 또는 처리 중 오류 (longRunningRecognize):', err);
     res.status(500).json({
-        error: 'STT API 처리 중 오류 발생',
-        details: err.message || '알 수 없는 오류'
+      error: 'STT API 처리 중 오류 발생',
+      details: err.message || '알 수 없는 오류'
     });
   }
 });
 
-
-// ✅ TTS 텍스트 → 음성 (목소리 속도 1.0으로 고정)
+// 3) TTS 텍스트 → 음성 (목소리 속도 1.0으로 고정)
 app.post('/api/tts', async (req, res) => {
   if (!ttsClient) {
-      console.error("[Backend TTS] TTS 클라이언트가 초기화되지 않았습니다.");
-      return res.status(500).json({ error: 'TTS 서비스를 사용할 수 없습니다. 서버 설정을 확인하세요.' });
+    console.error("[Backend TTS] TTS 클라이언트가 초기화되지 않았습니다.");
+    return res.status(500).json({ error: 'TTS 서비스를 사용할 수 없습니다. 서버 설정을 확인하세요.' });
   }
   const { text, voice: voiceId } = req.body;
 
@@ -281,7 +330,9 @@ app.post('/api/tts', async (req, res) => {
     return res.status(400).json({ error: 'text 누락' });
   }
 
-  console.log(`[Backend TTS] /api/tts 요청 수신. Text: "${String(text).substring(0,30)}...", Voice ID: ${voiceId}`);
+  console.log(
+    `[Backend TTS] /api/tts 요청 수신. Text: "${String(text).substring(0, 30)}...", Voice ID: ${voiceId}`
+  );
 
   const speakingRateToUse = 1.0;
   console.log(`[Backend TTS] 적용될 말하기 속도: ${speakingRateToUse} (Voice ID: ${voiceId})`);
@@ -291,17 +342,27 @@ app.post('/api/tts', async (req, res) => {
       input: { text: text },
       voice: {
         languageCode: 'ko-KR',
-        ...(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { name: voiceId },
-        ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && { ssmlGender: 'FEMALE' })
+        ...(voiceId &&
+          typeof voiceId === 'string' &&
+          voiceId.startsWith('ko-KR') && { name: voiceId }),
+        ...(!(voiceId && typeof voiceId === 'string' && voiceId.startsWith('ko-KR')) && {
+          ssmlGender: 'FEMALE'
+        })
       },
       audioConfig: {
         audioEncoding: 'MP3',
         speakingRate: speakingRateToUse
-      },
+      }
     };
 
-    console.log("[Backend TTS] Google Cloud TTS API 호출 시작. Voice Config:", JSON.stringify(ttsRequest.voice));
-    console.log("[Backend TTS] Google Cloud TTS API 호출 시작. Audio Config:", JSON.stringify(ttsRequest.audioConfig));
+    console.log(
+      "[Backend TTS] Google Cloud TTS API 호출 시작. Voice Config:",
+      JSON.stringify(ttsRequest.voice)
+    );
+    console.log(
+      "[Backend TTS] Google Cloud TTS API 호출 시작. Audio Config:",
+      JSON.stringify(ttsRequest.audioConfig)
+    );
 
     const [response] = await ttsClient.synthesizeSpeech(ttsRequest);
     console.log("[Backend TTS] Google Cloud TTS API 응답 수신됨.");
@@ -313,7 +374,8 @@ app.post('/api/tts', async (req, res) => {
     res.status(500).json({ error: 'TTS API 처리 중 오류 발생', details: err.message });
   }
 });
-//예외 핸들러
+
+// 예외 핸들러
 process.on('uncaughtException', err => {
   console.error('!!!!!!!!!!!! Uncaught Exception:', err);
   process.exit(1); // 필수: 예외 발생 후 프로세스 종료
@@ -326,3 +388,4 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // 서버 리스닝 시작
 app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
+
