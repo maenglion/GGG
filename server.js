@@ -16,22 +16,21 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 // --- CORS 설정 (기존과 동일하게 유지) ---
-const allowedLocalOrigins = [ 'http://127.0.0.1:5500', 'http://localhost:5500' ];
+const allowedOrigins = [
+  'http://127.0.0.1:5500',
+  'http://localhost:5500',
+  'https://lozee.netlify.app' // ⭐ 실제 서비스 주소 추가
+];
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedLocalOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
+    // origin이 없거나(예: Postman) 허용 목록에 있으면 허용
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-    try {
-      const originUrl = new URL(origin);
-      if (originUrl.hostname.endsWith('.netlify.app') || originUrl.hostname.endsWith('.scf.usercontent.goog')) {
-        return callback(null, true);
-      }
-    } catch (e) {
-      return callback(new Error(`Origin ${origin} not allowed by CORS`));
-    }
-    callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
+  
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
