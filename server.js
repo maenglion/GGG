@@ -10,7 +10,10 @@ dotenv.config();
 
 // 서비스 계정 키 파일(json)을 프로젝트에 추가하고, 아래 경로를 수정해야 합니다.
 // 이 파일은 Firebase 콘솔 > 프로젝트 설정 > 서비스 계정에서 생성할 수 있습니다.
+// 예시: import serviceAccount from './lozee-xxxx-firebase-adminsdk-xxxx.json' assert { type: 'json' };
+// 아래 라인은 실제 파일 경로로 수정해주세요.
 import serviceAccount from './lozee-65a82-firebase-adminsdk-vpx56-8a504b503d.json' assert { type: 'json' };
+
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -21,7 +24,6 @@ const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // --- 2. CORS 설정 ---
-// 클라이언트 주소를 허용 목록에 추가합니다.
 const allowedOrigins = [
   'http://127.0.0.1:5500',
   'http://localhost:5500',
@@ -37,21 +39,20 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  // 'Authorization' 헤더를 허용하도록 명시적으로 추가합니다.
+  // ⭐ FIX: 클라이언트에서 보내는 'Authorization' 헤더를 허용합니다.
   allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'OPTIONS'], // OPTIONS 메소드 허용
+  methods: ['GET', 'POST', 'OPTIONS'],
 };
 
 // CORS 미들웨어를 적용합니다.
 app.use(cors(corsOptions));
-// Pre-flight 요청(OPTIONS)을 처리합니다. 인증 헤더가 포함된 요청 전에 브라우저가 보내는 예비 요청입니다.
+// ⭐ FIX: Pre-flight 요청(OPTIONS)을 명시적으로 처리합니다.
 app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '10mb' }));
 
 
 // --- 3. Firebase 인증 미들웨어 ---
-// API 요청이 오면, 헤더에 담긴 토큰을 검증하는 '문지기' 함수입니다.
 async function verifyFirebaseToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
@@ -63,8 +64,8 @@ async function verifyFirebaseToken(req, res, next) {
 
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // 요청 객체에 인증된 사용자 정보를 저장합니다.
-    next(); // 토큰이 유효하므로, 다음 단계(실제 API 로직)로 넘어갑니다.
+    req.user = decodedToken;
+    next();
   } catch (error) {
     console.error('Firebase 토큰 인증 실패:', error);
     res.status(403).send('Unauthorized: Invalid token');
@@ -73,11 +74,8 @@ async function verifyFirebaseToken(req, res, next) {
 
 
 // --- 4. API 라우트 설정 ---
-
-// '/api/gpt-chat' 라우트에 'verifyFirebaseToken' 문지기를 적용합니다.
 app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   const { messages } = req.body;
-  // 이제 req.user.uid로 인증된 사용자의 UID에 접근할 수 있습니다.
   console.log(`GPT-Chat 요청: 인증된 사용자 UID - ${req.user.uid}`);
   
   if (!OPENAI_API_KEY) return res.status(500).json({ error: 'API 키가 설정되지 않았습니다.' });
@@ -110,8 +108,6 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-
-// ⭐ '/api/tts' 라우트 추가 및 문지기 적용
 app.post('/api/tts', verifyFirebaseToken, async (req, res) => {
     const { text, voice } = req.body;
     console.log(`TTS 요청: 인증된 사용자 UID - ${req.user.uid}`);
@@ -123,19 +119,12 @@ app.post('/api/tts', verifyFirebaseToken, async (req, res) => {
         return res.status(500).json({ error: 'API 키가 설정되지 않았습니다.' });
     }
 
-    const payload = {
-        model: "tts-1",
-        input: text,
-        voice: voice,
-    };
+    const payload = { model: "tts-1", input: text, voice: voice };
 
     try {
         const response = await fetch('https://api.openai.com/v1/audio/speech', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
@@ -143,17 +132,13 @@ app.post('/api/tts', verifyFirebaseToken, async (req, res) => {
             const errorBody = await response.text();
             throw new Error(`OpenAI TTS API 오류: ${response.statusText} - ${errorBody}`);
         }
-
-        // OpenAI로부터 받은 오디오 스트림을 클라이언트로 그대로 전달합니다.
         res.setHeader('Content-Type', 'audio/mpeg');
         response.body.pipe(res);
-
     } catch (error) {
         console.error("[Backend] TTS API 호출 실패:", error);
         res.status(500).json({ error: "TTS 오디오 생성 중 서버 오류 발생" });
     }
 });
-
 
 // --- 5. 서버 시작 ---
 app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
