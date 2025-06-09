@@ -4,16 +4,31 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
+// ⭐ FIX: fs와 path 모듈을 import 합니다. JSON 파일을 안정적으로 읽기 위함입니다.
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // --- 1. 환경변수 및 Firebase Admin 설정 ---
 dotenv.config();
 
-// 서비스 계정 키 파일(json)을 프로젝트에 추가하고, 아래 경로를 수정해야 합니다.
-// 이 파일은 Firebase 콘솔 > 프로젝트 설정 > 서비스 계정에서 생성할 수 있습니다.
-// 예시: import serviceAccount from './lozee-xxxx-firebase-adminsdk-xxxx.json' assert { type: 'json' };
-// 아래 라인은 실제 파일 경로로 수정해주세요.
-import serviceAccount from './lozee-65a82-firebase-adminsdk-vpx56-8a504b503d.json' assert { type: 'json' };
-
+// ⭐ FIX: 'assert' 구문을 사용하는 대신, 환경 변수를 우선적으로 사용하고, 
+// 로컬 개발 환경에서는 파일을 직접 읽는 방식으로 변경하여 호환성 문제를 해결합니다.
+let serviceAccount;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    // Railway 같은 배포 환경에서는 환경 변수에서 서비스 계정 정보를 가져옵니다.
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+    // 로컬 개발 환경에서는 파일 시스템에서 서비스 계정 파일을 읽어옵니다.
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const serviceAccountPath = path.join(__dirname, './lozee-65a82-firebase-adminsdk-vpx56-8a504b503d.json');
+    if (!fs.existsSync(serviceAccountPath)) {
+        throw new Error(`서비스 계정 파일을 찾을 수 없습니다: ${serviceAccountPath}. Railway에 배포하는 경우 FIREBASE_SERVICE_ACCOUNT 환경 변수를 설정했는지 확인하세요.`);
+    }
+    const serviceAccountFile = fs.readFileSync(serviceAccountPath, 'utf8');
+    serviceAccount = JSON.parse(serviceAccountFile);
+}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -39,16 +54,12 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  // ⭐ FIX: 클라이언트에서 보내는 'Authorization' 헤더를 허용합니다.
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'OPTIONS'],
 };
 
-// CORS 미들웨어를 적용합니다.
 app.use(cors(corsOptions));
-// ⭐ FIX: Pre-flight 요청(OPTIONS)을 명시적으로 처리합니다.
 app.options('*', cors(corsOptions));
-
 app.use(express.json({ limit: '10mb' }));
 
 
