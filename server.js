@@ -33,8 +33,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// ⭐ FIX: More robust CORS handling placed before any other middleware.
-// This ensures that all OPTIONS (pre-flight) requests are handled correctly.
+// CORS 미들웨어 설정
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     const allowedOrigins = [
@@ -51,9 +50,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.header('Access-Control-Allow-Credentials', true);
     
-    // Intercept OPTIONS method
     if (req.method === 'OPTIONS') {
-        // Respond with 204 'No Content' status for pre-flight requests
         return res.sendStatus(204);
     }
     
@@ -62,7 +59,7 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '10mb' }));
 
-// --- 3. Firebase 인증 미들웨어 ---
+// Firebase 인증 미들웨어
 async function verifyFirebaseToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -79,12 +76,14 @@ async function verifyFirebaseToken(req, res, next) {
   }
 }
 
-// --- 4. API 라우트 설정 ---
+// --- API 라우트 설정 ---
 app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   const { messages } = req.body;
   if (!OPENAI_API_KEY) return res.status(500).json({ error: 'API 키가 설정되지 않았습니다.' });
   if (!Array.isArray(messages)) return res.status(400).json({ error: '유효하지 않은 요청입니다.' });
+  
   const payload = { model: 'gpt-4-turbo', messages, temperature: 0.7 };
+
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -92,16 +91,29 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
       body: JSON.stringify(payload)
     });
     if (!response.ok) throw new Error(`OpenAI API 오류: ${response.statusText}`);
+
     const gptData = await response.json();
     const rawAiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네.";
+
+    // ⭐ FIX: JSON과 텍스트를 분리하는 로직 강화
     let cleanText = rawAiContent;
     let parsedAnalysisData = {};
-    const jsonStartIndex = rawAiContent.indexOf('{"summaryTitle":');
+    
+    const jsonStartIndex = rawAiContent.indexOf('{');
     if (jsonStartIndex !== -1) {
-        cleanText = rawAiContent.substring(0, jsonStartIndex).trim();
-        try { parsedAnalysisData = JSON.parse(rawAiContent.substring(jsonStartIndex)); } catch (e) { console.error("분석 JSON 파싱 오류:", e); }
+        const potentialJson = rawAiContent.substring(jsonStartIndex);
+        try {
+            parsedAnalysisData = JSON.parse(potentialJson);
+            cleanText = rawAiContent.substring(0, jsonStartIndex).trim();
+            console.log("✅ JSON 분리 성공");
+        } catch (e) {
+            console.error("⚠️ 분석 JSON 파싱 오류. 응답 전체를 텍스트로 처리합니다.", e);
+            cleanText = rawAiContent;
+            parsedAnalysisData = {};
+        }
     }
     res.json({ text: cleanText, analysis: parsedAnalysisData });
+
   } catch (err) {
     console.error("[Backend] API 호출 실패:", err);
     res.status(500).json({ error: '서버 내부 오류' });
@@ -135,5 +147,5 @@ app.post('/api/tts', verifyFirebaseToken, async (req, res) => {
     }
 });
 
-// --- 5. 서버 시작 ---
+// 서버 시작
 app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
