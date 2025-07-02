@@ -36,24 +36,21 @@ const app = express();
 const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// ✅ Google TTS 클라이언트 초기화: 여기가 가장 적절한 위치입니다.
-//    dotenv.config() 후에 환경 변수에 접근할 수 있고,
-//    Firebase Admin SDK 초기화와 별개로 진행됩니다.
-let googleTtsClient; // ✅ 변수를 선언
+// ✅ Google Cloud TTS 클라이언트 초기화 (GOOGLE_APPLICATION_CREDENTIALS 사용)
+let googleTtsClient;
 try {
-    // Railway 환경 변수에 JSON을 그대로 붙여넣었다면, `.replace(/\\n/g, '\n')` 부분은 필요 없을 수 있습니다.
-    // 만약 `\n`이 `\\n`으로 저장되었다면 다시 `replace`를 활성화해야 합니다.
-    const ttsCredentials = JSON.parse(process.env.GOOGLE_TTS_KEY); 
-    googleTtsClient = new TextToSpeechClient({ // ✅ 여기에 값을 할당
-        credentials: ttsCredentials
-    });
-    console.log("✅ TTS 인증 이메일:", ttsCredentials.client_email);
+    // GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 자동으로 사용하므로,
+    // credentials를 명시적으로 설정할 필요가 없습니다.
+    googleTtsClient = new TextToSpeechClient(); // ✅ 이 부분이 훨씬 간결해집니다.
+    // 테스트 로그를 남기고 싶다면, client_email은 여전히 환경변수를 직접 파싱해야 합니다.
+    // const ttsCredentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    // console.log("✅ TTS 인증 이메일:", ttsCredentials.client_email); 
+    console.log("✅ Google TTS 클라이언트 초기화 성공 (GOOGLE_APPLICATION_CREDENTIALS 사용)");
 } catch (e) {
     console.error("❌ Google TTS 클라이언트 초기화 실패:", e);
-    console.error("GOOGLE_TTS_KEY 환경 변수 또는 JSON 파싱을 확인해주세요.", e.message);
-    process.exit(1); // 클라이언트 초기화 실패 시 서버 시작 중지 (심각한 에러)
+    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 확인해주세요.", e.message);
+    process.exit(1);
 }
-
 
 // ✅ CORS 미들웨어 설정
 // 이전의 직접 구현한 CORS 미들웨어는 주석 처리되어 있습니다.
