@@ -55,7 +55,6 @@ try {
 // ✅ CORS 미들웨어 설정
 // 이전의 직접 구현한 CORS 미들웨어는 주석 처리되어 있습니다.
 // `cors` 패키지를 사용하여 올바르게 설정합니다.
-console.log('CORS middleware applied with origins:', allowedOrigins);
 app.use(cors({
     origin: [
         'http://127.0.0.1:5500',
