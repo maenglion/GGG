@@ -10,6 +10,14 @@ import { fileURLToPath } from 'url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech'; // textToSpeech 대신 직접 TextToSpeechClient import
 
 
+process.on('uncaughtException', err => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', err => {
+  console.error('Unhandled Rejection:', err);
+});
+
+
 // --- 1. 환경변수 및 Firebase Admin 설정 ---
 dotenv.config();
 
