@@ -154,22 +154,13 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
 // ✅ Google Cloud TTS API 라우트 (이 부분은 변경 없음)
 app.post('/api/google-tts', async (req, res) => {
   try {
-    const rawKey = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-
-    if (!rawKey) {
-      console.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경변수가 설정되어 있지 않습니다.");
-      return res.status(500).send({ error: "TTS 인증 키가 서버에 설정되어 있지 않습니다." });
-    }
-
-    const credentials = JSON.parse(rawKey.replace(/\\n/g, '\n'));
-
-    const client = new textToSpeech.TextToSpeechClient({ credentials });
+    const client = new textToSpeech.TextToSpeechClient(); // ✅ 기본 인증 사용
 
     const request = {
       input: { text: req.body.text },
       voice: {
         languageCode: 'ko-KR',
-        name: req.body.voice || 'ko-KR-Chirp3-HD-Leda'
+        name: req.body.voiceName || 'ko-KR-Chirp3-HD-Leda' // ✅ 'voice' → 'voiceName' 수정
       },
       audioConfig: { audioEncoding: 'MP3' }
     };
@@ -179,7 +170,10 @@ app.post('/api/google-tts', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Google TTS 에러:', error);
-    res.status(500).send({ error: 'Google TTS 오디오 생성 중 서버 오류 발생', detail: error.message });
+    res.status(500).send({
+      error: 'Google TTS 오디오 생성 중 서버 오류 발생',
+      detail: error.message
+    });
   }
 });
 
