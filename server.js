@@ -152,29 +152,27 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
 });
 
 // ✅ Google Cloud TTS API 라우트 (이 부분은 변경 없음)
-app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => {
-    const { text, voiceName } = req.body;
-
-    if (!text || !voiceName) {
-        return res.status(400).json({ error: "text와 voiceName 파라미터가 필요합니다." });
-    }
+app.post('/api/google-tts', async (req, res) => {
+  try {
+    const credentials = JSON.parse(process.env.GOOGLE_TTS_KEY.replace(/\\n/g, '\n'));
+    const client = new textToSpeech.TextToSpeechClient({ credentials });
 
     const request = {
-        input: { text: text },
-        voice: { languageCode: 'ko-KR', name: voiceName },
-        audioConfig: { audioEncoding: 'MP3' },
+      input: { text: req.body.text },
+      voice: {
+        languageCode: 'ko-KR',
+        name: req.body.voice || 'ko-KR-Chirp3-HD-Leda'
+      },
+      audioConfig: { audioEncoding: 'MP3' }
     };
 
-    try {
-        const [response] = await googleTtsClient.synthesizeSpeech(request);
-        res.set('Content-Type', 'audio/mpeg');
-        res.send(response.audioContent);
-    } catch (error) {
-        console.error("[Backend] Google TTS API 호출 실패:", error);
-        res.status(500).json({ error: "Google TTS 오디오 생성 중 서버 오류 발생" });
-    }
+    const [response] = await client.synthesizeSpeech(request);
+    res.send(response.audioContent);
+  } catch (error) {
+    console.error('❌ Google TTS 에러:', error);
+    res.status(500).send({ error: 'Google TTS 오디오 생성 중 서버 오류 발생', detail: error.message });
+  }
 });
-
 
 // 서버 시작 (이 부분은 변경 없음)
 app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
