@@ -1,5 +1,5 @@
 // server.js
-import express from 'express';
+import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import fetch from 'node-fetch';
 import cors from 'cors'; // cors 패키지 import는 그대로 유지됩니다.
 import dotenv from 'dotenv';
@@ -7,7 +7,6 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { TextToSpeechClient } from '@google-cloud/text-to-speech'; // textToSpeech 대신 직접 TextToSpeechClient import
 
 
 process.on('uncaughtException', err => {
