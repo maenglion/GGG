@@ -175,7 +175,40 @@ app.post('/api/google-tts', async (req, res) => {
       detail: error.message
     });
   }
+
+ try {
+    let rawText = req.body.text;
+
+    // 2차 정제 (혹시 클라이언트가 escape 처리를 빼먹었을 경우 대비)
+    const cleanText = String(rawText)
+      .replace(/[\u0000-\u001F]+/g, ' ')  // 제어 문자 제거 (null, bell, etc.)
+      .replace(/\s\s+/g, ' ')            // 중복 공백 제거
+      .trim();
+
+    const client = new textToSpeech.TextToSpeechClient({ credentials });
+
+    const request = {
+      input: { text: cleanText },
+      voice: {
+        languageCode: 'ko-KR',
+        name: req.body.voiceName || 'ko-KR-Chirp3-HD-Leda'
+      },
+      audioConfig: { audioEncoding: 'MP3' }
+    };
+
+    const [response] = await client.synthesizeSpeech(request);
+    res.send(response.audioContent);
+
+  } catch (error) {
+    console.error('❌ Google TTS 에러:', error);
+    res.status(500).send({
+      error: 'Google TTS 오디오 생성 중 서버 오류 발생',
+      detail: error.message
+    });
+  }
 });
 
-// 서버 시작 (이 부분은 변경 없음)
-app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
+// 서버 리스닝 시작
+app.listen(port, () => {
+  console.log(`✅ 서버 실행 중: http://localhost:${port} (Railway에서는 자동으로 포트 매핑)`);
+});
