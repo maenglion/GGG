@@ -7,6 +7,9 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import textToSpeech from '@google-cloud/text-to-speech';
+
+const googleTtsClient = new textToSpeech.TextToSpeechClient(); // ✅ 누락된 클라이언트 생성
 
 // --- 1. 환경변수 및 Firebase Admin 설정 ---
 dotenv.config();
