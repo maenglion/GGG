@@ -9,7 +9,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import textToSpeech from '@google-cloud/text-to-speech';
 
-const googleTtsClient = new textToSpeech.TextToSpeechClient(); // ✅ 누락된 클라이언트 생성
 
 // --- 1. 환경변수 및 Firebase Admin 설정 ---
 dotenv.config();
@@ -28,6 +27,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = JSON.parse(serviceAccountFile);
 }
 
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -35,6 +35,23 @@ admin.initializeApp({
 const app = express();
 const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// ✅ 여기에서만 'googleTtsClient'를 선언하고 초기화합니다.
+//    파일 내 다른 곳에 'let googleTtsClient;' 또는 'const googleTtsClient = ...;'가 있다면
+//    모두 삭제하고 이 위치의 코드만 남겨야 합니다.
+let googleTtsClient; // ✅ 변수를 선언
+try {
+    const ttsCredentials = JSON.parse(process.env.GOOGLE_TTS_KEY); 
+    googleTtsClient = new TextToSpeechClient({ // ✅ 여기에 값을 할당
+        credentials: ttsCredentials
+    });
+    console.log("✅ TTS 인증 이메일:", ttsCredentials.client_email);
+} catch (e) {
+    console.error("❌ Google TTS 클라이언트 초기화 실패:", e);
+    console.error("GOOGLE_TTS_KEY 환경 변수 또는 JSON 파싱을 확인해주세요.", e.message);
+    process.exit(1);
+}
+
 
 // CORS 미들웨어 설정
 app.use((req, res, next) => {
