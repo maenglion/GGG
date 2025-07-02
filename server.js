@@ -1,7 +1,7 @@
 // server.js
 import express from 'express';
-import fetch from 'node-fetch';
-import cors from 'cors';
+import fetch from 'node-fetch'; // fetch는 필요에 따라 유지하거나 제거 (Google SDK는 자체 클라이언트 사용)
+import cors from 'cors'; // cors는 이미 설정되어 있으므로 유지
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import fs from 'fs';
@@ -120,32 +120,30 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-app.post('/api/tts', verifyFirebaseToken, async (req, res) => {
-    const { text, voice } = req.body;
-    if (!text || !voice) {
-        return res.status(400).json({ error: "text와 voice 파라미터가 필요합니다." });
+// ✅ Google Cloud TTS API 라우트 (이 부분을 새로 추가합니다)
+app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => {
+    const { text, voiceName } = req.body;
+
+    if (!text || !voiceName) {
+        return res.status(400).json({ error: "text와 voiceName 파라미터가 필요합니다." });
     }
-    if (!OPENAI_API_KEY) {
-        return res.status(500).json({ error: 'API 키가 설정되지 않았습니다.' });
-    }
-    const payload = { model: "tts-1", input: text, voice: voice };
+
+    const request = {
+        input: { text: text },
+        voice: { languageCode: 'ko-KR', name: voiceName },
+        audioConfig: { audioEncoding: 'MP3' },
+    };
+
     try {
-        const response = await fetch('https://api.openai.com/v1/audio/speech', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`OpenAI TTS API 오류: ${response.statusText} - ${errorBody}`);
-        }
-        res.setHeader('Content-Type', 'audio/mpeg');
-        response.body.pipe(res);
+        const [response] = await googleTtsClient.synthesizeSpeech(request);
+        res.set('Content-Type', 'audio/mpeg');
+        res.send(response.audioContent);
     } catch (error) {
-        console.error("[Backend] TTS API 호출 실패:", error);
-        res.status(500).json({ error: "TTS 오디오 생성 중 서버 오류 발생" });
+        console.error("[Backend] Google TTS API 호출 실패:", error);
+        res.status(500).json({ error: "Google TTS 오디오 생성 중 서버 오류 발생" });
     }
 });
 
-// 서버 시작
+
+// 서버 시작 (이 부분은 유지합니다)
 app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
