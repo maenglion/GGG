@@ -54,6 +54,7 @@ try {
 
 
 // CORS 미들웨어 설정
+/*
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     const allowedOrigins = [
@@ -76,6 +77,19 @@ app.use((req, res, next) => {
     
     next();
 });
+*/
+// ✅ 새로운 cors 패키지 미들웨어 추가 (express.json() 위 또는 아래 모두 가능)
+// origin 옵션에 허용할 도메인 목록을 배열로 전달합니다.
+app.use(cors({
+    origin: [
+        'http://127.0.0.1:5500',
+        'http://localhost:5500',
+        'https://lozee.netlify.app'
+    ],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 
 app.use(express.json({ limit: '10mb' }));
 
