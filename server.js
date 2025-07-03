@@ -1,12 +1,15 @@
 // server.js
-import { TextToSpeechClient } from '@google-cloud/text-to-speech';
+import express from 'express';
 import fetch from 'node-fetch';
-import cors from 'cors'; // cors 패키지 import는 그대로 유지됩니다.
+import cors from 'cors';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// ✅ Google Cloud Text-to-Speech 클라이언트 라이브러리 import
+import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
 
 process.on('uncaughtException', err => {
@@ -43,36 +46,37 @@ const app = express();
 const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+
 // ✅ Google Cloud TTS 클라이언트 초기화: 여기가 가장 적절한 위치입니다.
 //    GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 자동으로 사용하므로,
 //    credentials를 명시적으로 설정할 필요가 없습니다.
-let googleTtsClient; // ✅ 변수 선언 (또는 const googleTtsClient; 로 되어 있다면 그대로)
+let googleTtsClient; // ✅ 변수 선언 (이제 여기에서만 선언합니다)
 try {
-    // ⚠️ 오류 발생 원인 해결: 'textToSpeech.' 접두사를 제거합니다.
-    googleTtsClient = new TextToSpeechClient(); // ✅ import한 TextToSpeechClient를 직접 사용합니다.
+    // GOOGLE_APPLICATION_CREDENTIALS 환경 변수에 서비스 계정 JSON이 설정되어 있다면,
+    // TextToSpeechClient는 이 환경 변수를 자동으로 감지하여 인증합니다.
+    googleTtsClient = new TextToSpeechClient(); 
     
     console.log("✅ Google TTS 클라이언트 초기화 성공 (GOOGLE_APPLICATION_CREDENTIALS 사용)");
 } catch (e) {
     console.error("❌ Google TTS 클라이언트 초기화 실패:", e);
-    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수 또는 초기화 로직을 확인해주세요. 오류 상세: ", e.message);
-    process.exit(1);
+    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 확인해주세요. 오류 상세: ", e.message);
+    process.exit(1); // 클라이언트 초기화 실패 시 서버 시작 중지
 }
 
-// ✅ CORS 미들웨어 설정
-// 이전의 직접 구현한 CORS 미들웨어는 주석 처리되어 있습니다.
-// `cors` 패키지를 사용하여 올바르게 설정합니다.
+
+// ✅ CORS 미들웨어 설정 (가장 상단에 위치하여 모든 요청에 적용되도록)
 app.use(cors({
     origin: [
         'http://127.0.0.1:5500',
         'http://localhost:5500',
-        'https://lozee.netlify.app' // ✅ Netlify 도메인 포함
+        'https://lozee.netlify.app'
     ],
-    methods: ['GET', 'POST', 'OPTIONS'], // 허용할 HTTP 메서드
-    allowedHeaders: ['Content-Type', 'Authorization'], // 허용할 헤더
-    credentials: true // 자격 증명(쿠키, 인증 헤더 등) 허용
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '10mb' })); // JSON 파싱 미들웨어
 
 // Firebase 인증 미들웨어 (이 부분은 변경 없음)
 async function verifyFirebaseToken(req, res, next) {
@@ -95,10 +99,9 @@ async function verifyFirebaseToken(req, res, next) {
 // GPT Chat API 라우트 (이 부분은 변경 없음)
 app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   const { messages } = req.body;
-  // 클라이언트에서 보낸 max_tokens, model, temperature를 활용하도록 변경
-  const clientModel = req.body.model || 'gpt-4o'; // 클라이언트에서 보낸 모델 사용, 없으면 gpt-4o 기본
+  const clientModel = req.body.model || 'gpt-4o';
   const clientTemperature = req.body.temperature || 0.7;
-  const clientMaxTokens = req.body.max_tokens || 500; // 클라이언트가 보낸 max_tokens 사용, 없으면 기본값 500
+  const clientMaxTokens = req.body.max_tokens || 500;
 
   if (!OPENAI_API_KEY) return res.status(500).json({ error: 'API 키가 설정되지 않았습니다.' });
   if (!Array.isArray(messages)) return res.status(400).json({ error: '유효하지 않은 요청입니다.' });
@@ -107,7 +110,7 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
     model: clientModel, 
     messages, 
     temperature: clientTemperature,
-    max_tokens: clientMaxTokens // ✅ 클라이언트에서 받은 max_tokens 적용
+    max_tokens: clientMaxTokens
   };
 
   try {
@@ -117,14 +120,13 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
       body: JSON.stringify(payload)
     });
     if (!response.ok) {
-        const errorBody = await response.json();
-        throw new Error(`OpenAI API 오류: ${response.statusText} - ${JSON.stringify(errorBody)}`);
+        const errorData = await response.json();
+        throw new Error(`OpenAI API 오류: ${response.statusText} - ${JSON.stringify(errorData)}`);
     }
 
     const gptData = await response.json();
     const rawAiContent = gptData?.choices?.[0]?.message?.content || "미안하지만, 지금은 답변을 드리기 어렵네.";
 
-    // ⭐ FIX: JSON과 텍스트를 분리하는 로직 강화
     let cleanText = rawAiContent;
     let parsedAnalysisData = {};
     
@@ -149,60 +151,43 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ Google Cloud TTS API 라우트 (이 부분은 변경 없음)
-app.post('/api/google-tts', async (req, res) => {
+// ✅ Google Cloud TTS API 라우트 (하나로 통합 및 수정)
+app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => {
   try {
-    const { text, voiceName } = req.body; // ✅ 여기선 그냥 req.body 사용
+    const { text, voiceName } = req.body; // 클라이언트에서 'text'와 'voiceName'으로 보냄
 
-    const client = new textToSpeech.TextToSpeechClient({ credentials });
+    // `googleTtsClient`는 전역으로 이미 선언되고 초기화되었습니다.
+    // 따라서 이 라우트 내부에서 'new TextToSpeechClient()'를 다시 호출하거나
+    // 'const client = new textToSpeech.TextToSpeechClient()'처럼 선언할 필요가 없습니다.
+    // 이미 전역 변수 'googleTtsClient'를 사용할 수 있습니다.
 
+    if (!text || !voiceName) { // 파라미터 유효성 검사
+        return res.status(400).json({ error: "text와 voiceName 파라미터가 필요합니다." });
+    }
+    
     const request = {
-      input: { text },
+      input: { text: text }, // ✅ 클라이언트에서 받은 text 사용
       voice: {
         languageCode: 'ko-KR',
-        name: voiceName || 'ko-KR-Chirp3-HD-Leda'
+        name: voiceName // ✅ 클라이언트에서 받은 voiceName 사용
       },
       audioConfig: { audioEncoding: 'MP3' }
     };
 
-    const [response] = await client.synthesizeSpeech(request);
+    const [response] = await googleTtsClient.synthesizeSpeech(request); // ✅ 전역 googleTtsClient 사용
+    res.set('Content-Type', 'audio/mpeg');
     res.send(response.audioContent);
 
   } catch (error) {
     console.error('❌ Google TTS 에러:', error);
     res.status(500).send({
       error: 'Google TTS 오디오 생성 중 서버 오류 발생',
-      detail: error.message
-    });
-  }
-});
- try {
-    let rawText = req.body.text;
-
-    const client = new textToSpeech.TextToSpeechClient
-
-    const request = {
-      input: { text: cleanText },
-      voice: {
-        languageCode: 'ko-KR',
-        name: req.body.voiceName || 'ko-KR-Chirp3-HD-Leda'
-      },
-      audioConfig: { audioEncoding: 'MP3' }
-    };
-
-    const [response] = await client.synthesizeSpeech(request);
-    res.send(response.audioContent);
-
-  } catch (error) {
-    console.error('❌ Google TTS 에러:', error);
-    res.status(500).send({
-      error: 'Google TTS 오디오 생성 중 서버 오류 발생',
-      detail: error.message
+      detail: error.message // Google Cloud TTS API의 상세 에러 메시지를 포함
     });
   }
 });
 
 // 서버 리스닝 시작
 app.listen(port, () => {
-  console.log(`✅ 서버 실행 중: http://localhost:${port} (Railway에서는 자동으로 포트 매핑)`);
+  console.log(`🚀 서버 실행 중: http://localhost:${port} (Railway에서는 자동으로 포트 매핑)`);
 });
