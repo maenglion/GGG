@@ -43,19 +43,18 @@ const app = express();
 const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// ✅ Google Cloud TTS 클라이언트 초기화 (GOOGLE_APPLICATION_CREDENTIALS 사용)
-let googleTtsClient;
+// ✅ Google Cloud TTS 클라이언트 초기화: 여기가 가장 적절한 위치입니다.
+//    GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 자동으로 사용하므로,
+//    credentials를 명시적으로 설정할 필요가 없습니다.
+let googleTtsClient; // ✅ 변수 선언 (또는 const googleTtsClient; 로 되어 있다면 그대로)
 try {
-    // GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 자동으로 사용하므로,
-    // credentials를 명시적으로 설정할 필요가 없습니다.
-    googleTtsClient = new TextToSpeechClient(); // ✅ 이 부분이 훨씬 간결해집니다.
-    // 테스트 로그를 남기고 싶다면, client_email은 여전히 환경변수를 직접 파싱해야 합니다.
-    // const ttsCredentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-    // console.log("✅ TTS 인증 이메일:", ttsCredentials.client_email); 
+    // ⚠️ 오류 발생 원인 해결: 'textToSpeech.' 접두사를 제거합니다.
+    googleTtsClient = new TextToSpeechClient(); // ✅ import한 TextToSpeechClient를 직접 사용합니다.
+    
     console.log("✅ Google TTS 클라이언트 초기화 성공 (GOOGLE_APPLICATION_CREDENTIALS 사용)");
 } catch (e) {
     console.error("❌ Google TTS 클라이언트 초기화 실패:", e);
-    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 확인해주세요.", e.message);
+    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수 또는 초기화 로직을 확인해주세요. 오류 상세: ", e.message);
     process.exit(1);
 }
 
@@ -153,13 +152,15 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
 // ✅ Google Cloud TTS API 라우트 (이 부분은 변경 없음)
 app.post('/api/google-tts', async (req, res) => {
   try {
-    const client = new textToSpeech.TextToSpeechClient(); // ✅ 기본 인증 사용
+    const { text, voiceName } = req.body; // ✅ 여기선 그냥 req.body 사용
+
+    const client = new textToSpeech.TextToSpeechClient({ credentials });
 
     const request = {
-      input: { text: req.body.text },
+      input: { text },
       voice: {
         languageCode: 'ko-KR',
-        name: req.body.voiceName || 'ko-KR-Chirp3-HD-Leda' // ✅ 'voice' → 'voiceName' 수정
+        name: voiceName || 'ko-KR-Chirp3-HD-Leda'
       },
       audioConfig: { audioEncoding: 'MP3' }
     };
@@ -174,17 +175,11 @@ app.post('/api/google-tts', async (req, res) => {
       detail: error.message
     });
   }
-
+});
  try {
     let rawText = req.body.text;
 
-    // 2차 정제 (혹시 클라이언트가 escape 처리를 빼먹었을 경우 대비)
-    const cleanText = String(rawText)
-      .replace(/[\u0000-\u001F]+/g, ' ')  // 제어 문자 제거 (null, bell, etc.)
-      .replace(/\s\s+/g, ' ')            // 중복 공백 제거
-      .trim();
-
-    const client = new textToSpeech.TextToSpeechClient({ credentials });
+    const client = new textToSpeech.TextToSpeechClient
 
     const request = {
       input: { text: cleanText },
