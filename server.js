@@ -60,7 +60,7 @@ try {
     credentials = JSON.parse(file);
     console.log('✅ GOOGLE_APPLICATION_CREDENTIALS: 파일 경로로부터 로드 성공');
   } else {
-    credentials = JSON.parse(raw); // \\n 치환 없이 직접 파싱
+    credentials = JSON.parse(raw.replace(/\\n/g, '\n')); // ✅ 반드시 복원 필요
     console.log('✅ GOOGLE_APPLICATION_CREDENTIALS: 문자열 JSON 파싱 성공');
   }
 
