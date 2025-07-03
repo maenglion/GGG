@@ -76,15 +76,18 @@ try {
 
 // ✅ CORS 미들웨어 설정 (가장 상단에 위치하여 모든 요청에 적용되도록)
 app.use(cors({
-    origin: [
-        'http://127.0.0.1:5500',
-        'http://localhost:5500',
-        'https://lozee.netlify.app'
-    ],
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+  origin: [
+    'http://127.0.0.1:5500',
+    'http://localhost:5500',
+    'https://lozee.netlify.app'  // ✅ 여기가 중요!
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
+
+// 🔁 preflight 요청까지 허용
+app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' })); // JSON 파싱 미들웨어
 
