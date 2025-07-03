@@ -48,27 +48,28 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 
 // ✅ Google Cloud TTS 클라이언트 초기화
-let googleTtsClient; 
+let googleTtsClient;
+
 try {
-    // Railway 환경 변수에 서비스 계정 JSON 내용을 직접 문자열로 저장했을 때의 올바른 파싱 방법
-    const credentialsJsonString = process.env.GOOGLE_APPLICATION_CREDENTIALS; // 환경 변수 값 가져오기
-    
-    if (!credentialsJsonString) {
-        throw new Error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수가 설정되지 않았습니다.");
-    }
+  const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (!raw) throw new Error('GOOGLE_APPLICATION_CREDENTIALS 환경변수가 비어 있습니다.');
 
-    // JSON 문자열 파싱 (private_key 내의 이스케이프된 \n을 실제 \n으로 변환)
-    const ttsCredentials = JSON.parse(credentialsJsonString.replace(/\\n/g, '\n')); // ✅ 이 라인으로 다시 복원/확인
+  let credentials;
+  if (fs.existsSync(raw)) {
+    const file = fs.readFileSync(raw, 'utf-8');
+    credentials = JSON.parse(file);
+    console.log('✅ GOOGLE_APPLICATION_CREDENTIALS: 파일 경로로부터 로드 성공');
+  } else {
+    credentials = JSON.parse(raw); // \\n 치환 없이 직접 파싱
+    console.log('✅ GOOGLE_APPLICATION_CREDENTIALS: 문자열 JSON 파싱 성공');
+  }
 
-    googleTtsClient = new TextToSpeechClient({
-        credentials: ttsCredentials // ✅ 파싱된 JSON 객체를 'credentials' 옵션으로 직접 전달
-    });
-    
-    console.log("✅ Google TTS 클라이언트 초기화 성공 (GOOGLE_APPLICATION_CREDENTIALS 환경 변수 사용)");
+  googleTtsClient = new TextToSpeechClient({ credentials });
+  console.log('✅ Google TTS 클라이언트 초기화 성공');
+
 } catch (e) {
-    console.error("❌ Google TTS 클라이언트 초기화 실패:", e);
-    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수 또는 JSON 파싱을 확인해주세요. 오류 상세: ", e.message);
-    process.exit(1);
+  console.error('❌ Google TTS 초기화 실패:', e.message);
+  process.exit(1);
 }
 
 
@@ -163,6 +164,8 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
 // ✅ Google Cloud TTS API 라우트 (하나로 통합 및 수정)
 app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => {
   try {
+    
+    
     const { text, voiceName } = req.body; // 클라이언트에서 'text'와 'voiceName'으로 보냄
 
     // `googleTtsClient`는 전역으로 이미 선언되고 초기화되었습니다.
@@ -183,7 +186,7 @@ app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => {
       audioConfig: { audioEncoding: 'MP3' }
     };
 
-    const [response] = await googleTtsClient.synthesizeSpeech(request); // ✅ 전역 googleTtsClient 사용
+    const [response] = await googleTtsClient.synthesizeSpeech(request); // 이 줄 유지 
     res.set('Content-Type', 'audio/mpeg');
     res.send(response.audioContent);
 
