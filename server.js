@@ -1,7 +1,7 @@
 // server.js
 import express from 'express';
 import fetch from 'node-fetch';
-import cors from 'cors';
+import cors from 'cors'; // ✅ cors 패키지 import는 이제 여기에만 있습니다.
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import fs from 'fs';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
 
+// 프로세스 예외 처리 (이 부분은 변경 없음)
 process.on('uncaughtException', err => {
   console.error('Uncaught Exception:', err);
 });
@@ -20,32 +21,10 @@ process.on('unhandledRejection', err => {
 });
 
 
-import cors from 'cors';
-
-app.use(cors({
-  origin: [
-    'http://127.0.0.1:5500',
-    'http://localhost:5500',
-    'https://lozee.netlify.app' // ✅ Netlify 주소 반드시 포함!
-  ],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
-
-// 2. OPTIONS 요청 허용 (preflight 요청 대응)
-app.options('*', cors());
-
-// ✅ 참고: talk.html, tts.js 등에서는 오류가 아님
-// 클라이언트는 정상적으로 요청을 보냈으나, 서버가 CORS 허용 헤더를 안 줘서 막힘
-
-// ✅ 적용 후 반드시 서버 재배포 또는 재시작 필요!
-
-
 // --- 1. 환경변수 및 Firebase Admin 설정 ---
-dotenv.config();
+dotenv.config(); // 환경 변수 로드는 가장 먼저
 
-let serviceAccount;
+let serviceAccount; // Firebase Admin SDK용 서비스 계정 변수
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 } else {
@@ -59,46 +38,51 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = JSON.parse(serviceAccountFile);
 }
 
-
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 
-const app = express();
+const app = express(); // ✅ Express 앱 인스턴스 생성
 const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 
-
-// ✅ Google Cloud TTS 클라이언트 초기화
-let googleTtsClient;
-
+// ✅ Google Cloud TTS 클라이언트 초기화: 여기가 가장 적절한 위치입니다.
+//    GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 자동으로 사용하므로,
+//    credentials를 명시적으로 설정할 필요가 없습니다.
+let googleTtsClient; 
 try {
-  const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!raw) throw new Error('GOOGLE_APPLICATION_CREDENTIALS 환경변수가 비어 있습니다.');
+    // GOOGLE_APPLICATION_CREDENTIALS 환경 변수에 서비스 계정 JSON이 문자열로 저장되어 있다면,
+    // TextToSpeechClient는 이 환경 변수를 자동으로 감지하여 인증합니다.
+    // 따라서, credentials를 명시적으로 설정하거나 JSON.parse 할 필요가 없습니다.
+    googleTtsClient = new TextToSpeechClient(); // ✅ 가장 간결하고 표준적인 초기화 방법
 
-  let credentials;
-  if (fs.existsSync(raw)) {
-    const file = fs.readFileSync(raw, 'utf-8');
-    credentials = JSON.parse(file);
-    console.log('✅ GOOGLE_APPLICATION_CREDENTIALS: 파일 경로로부터 로드 성공');
-  } else {
-    credentials = JSON.parse(raw.replace(/\\n/g, '\n')); // ✅ 반드시 복원 필요
-    console.log('✅ GOOGLE_APPLICATION_CREDENTIALS: 문자열 JSON 파싱 성공');
-  }
-
-  googleTtsClient = new TextToSpeechClient({ credentials });
-  console.log('✅ Google TTS 클라이언트 초기화 성공');
-
+    // 디버깅을 위한 로그 (선택 사항)
+    // const ttsCredentialsInfo = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS.replace(/\\n/g, '\n'));
+    // console.log("✅ Google TTS 클라이언트 초기화 성공. 인증 이메일:", ttsCredentialsInfo.client_email);
+    console.log("✅ Google TTS 클라이언트 초기화 성공 (GOOGLE_APPLICATION_CREDENTIALS 환경 변수 사용)");
 } catch (e) {
-  console.error('❌ Google TTS 초기화 실패:', e.message);
-  process.exit(1);
+    console.error("❌ Google TTS 클라이언트 초기화 실패:", e);
+    console.error("GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 확인해주세요. 오류 상세: ", e.message);
+    process.exit(1); // 클라이언트 초기화 실패 시 서버 시작 중지
 }
 
-// 🔁 preflight 요청까지 허용
-app.options('*', cors());
 
-app.use(express.json({ limit: '10mb' })); // JSON 파싱 미들웨어
+// ✅ CORS 미들웨어 설정 (가장 상단에 위치하여 모든 요청에 적용되도록)
+//    다른 미들웨어(express.json(), verifyFirebaseToken)보다 먼저 와야 합니다.
+app.use(cors({
+    origin: [
+        'http://127.0.0.1:5500',
+        'http://localhost:5500',
+        'https://lozee.netlify.app' // ✅ Netlify 도메인 포함
+    ],
+    methods: ['GET', 'POST', 'OPTIONS'], // 허용할 HTTP 메서드
+    allowedHeaders: ['Content-Type', 'Authorization'], // 허용할 헤더
+    credentials: true // 자격 증명(쿠키, 인증 헤더 등) 허용
+}));
+
+app.use(express.json({ limit: '10mb' })); // JSON 파싱 미들웨어 (CORS 미들웨어 다음에 위치)
+
 
 // Firebase 인증 미들웨어 (이 부분은 변경 없음)
 async function verifyFirebaseToken(req, res, next) {
@@ -119,9 +103,6 @@ async function verifyFirebaseToken(req, res, next) {
 
 // --- API 라우트 설정 ---
 // GPT Chat API 라우트 (이 부분은 변경 없음)
-
-
-
 app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   const { messages } = req.body;
   const clientModel = req.body.model || 'gpt-4o';
@@ -135,7 +116,7 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
     model: clientModel, 
     messages, 
     temperature: clientTemperature,
-    max_tokens: clientMaxTokens
+    max_tokens: clientMaxTokens 
   };
 
   try {
@@ -177,26 +158,37 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
 });
 
 // ✅ Google Cloud TTS API 라우트 (하나로 통합 및 수정)
-
-app.post('/api/google-tts', async (req, res) => {
+app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => { // ✅ verifyFirebaseToken 미들웨어 적용
   try {
-    const request = { ... }; // TTS request 구성
+    const { text, voiceName } = req.body; // 클라이언트에서 'text'와 'voiceName'으로 보냄
 
-    const [response] = await googleTtsClient.synthesizeSpeech(request);
+    // `googleTtsClient`는 전역으로 이미 선언되고 초기화되었습니다.
+    // 따라서 이 라우트 내부에서 'new TextToSpeechClient()'를 다시 호출하거나
+    // 'const client = new textToSpeech.TextToSpeechClient()'처럼 선언할 필요가 없습니다.
+    // 이미 전역 변수 'googleTtsClient'를 사용할 수 있습니다.
 
-  if (!response.audioContent) {
-  return res.status(500).json({ error: 'TTS 응답이 비어 있음' });
-}
+    if (!text || !voiceName) { // 파라미터 유효성 검사
+        return res.status(400).json({ error: "text와 voiceName 파라미터가 필요합니다." });
+    }
+    
+    const request = {
+      input: { text: text }, 
+      voice: {
+        languageCode: 'ko-KR',
+        name: voiceName // 클라이언트에서 받은 voiceName 사용
+      },
+      audioConfig: { audioEncoding: 'MP3' }
+    };
 
-
-    res.set('Access-Control-Allow-Origin', 'https://lozee.netlify.app'); // ✅ 강제로 헤더 추가
+    const [response] = await googleTtsClient.synthesizeSpeech(request); // ✅ 전역 googleTtsClient 사용
     res.set('Content-Type', 'audio/mpeg');
     res.send(response.audioContent);
+
   } catch (error) {
-    console.error('❌ Google TTS 처리 오류:', error);
-    res.status(500).json({
-      error: 'Google TTS 서버 오류 발생',
-      detail: error.message || '원인 불명'
+    console.error('❌ Google TTS 에러:', error);
+    res.status(500).send({
+      error: 'Google TTS 오디오 생성 중 서버 오류 발생',
+      detail: error.message // Google Cloud TTS API의 상세 에러 메시지를 포함
     });
   }
 });
