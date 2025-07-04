@@ -20,6 +20,28 @@ process.on('unhandledRejection', err => {
 });
 
 
+import cors from 'cors';
+
+app.use(cors({
+  origin: [
+    'http://127.0.0.1:5500',
+    'http://localhost:5500',
+    'https://lozee.netlify.app' // ✅ Netlify 주소 반드시 포함!
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+// 2. OPTIONS 요청 허용 (preflight 요청 대응)
+app.options('*', cors());
+
+// ✅ 참고: talk.html, tts.js 등에서는 오류가 아님
+// 클라이언트는 정상적으로 요청을 보냈으나, 서버가 CORS 허용 헤더를 안 줘서 막힘
+
+// ✅ 적용 후 반드시 서버 재배포 또는 재시작 필요!
+
+
 // --- 1. 환경변수 및 Firebase Admin 설정 ---
 dotenv.config();
 
@@ -47,6 +69,7 @@ const port = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 
+
 // ✅ Google Cloud TTS 클라이언트 초기화
 let googleTtsClient;
 
@@ -71,20 +94,6 @@ try {
   console.error('❌ Google TTS 초기화 실패:', e.message);
   process.exit(1);
 }
-
-
-
-// ✅ CORS 미들웨어 설정 (가장 상단에 위치하여 모든 요청에 적용되도록)
-app.use(cors({
-  origin: [
-    'http://127.0.0.1:5500',
-    'http://localhost:5500',
-    'https://lozee.netlify.app'  // ✅ 여기가 중요!
-  ],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
 
 // 🔁 preflight 요청까지 허용
 app.options('*', cors());
