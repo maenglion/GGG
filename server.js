@@ -15,14 +15,38 @@ const port = process.env.PORT || 3000;
 dotenv.config();
 
 // ✅ CORS — 맨 위에서 설정
+
+const cors = require('cors');
+
+// ✅ 허용할 도메인을 배열로 정의
+const allowedOrigins = [
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  'https://lozee.netlify.app',
+  'https://example.com',         // ✅ 외부 웹앱 예시
+  'https://postman.com',         // ✅ Postman 테스트용
+  undefined                      // ✅ 서버 간 요청(origin 없음 허용)
+];
+
+// ✅ 유연한 CORS 정책
 app.use(cors({
-  origin: 'https://lozee.netlify.app', // 💡 단일 허용만 해도 충분
+  origin: function (origin, callback) {
+    // 서버에서 요청하거나, origin이 허용 리스트에 있으면 허용
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn('❌ CORS 차단된 요청:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
-app.options('*', cors()); // ✅ CORS preflight 대응
+// ✅ preflight 요청 처리
+app.options('*', cors());
+
 
 
 // ✅ firebase-admin 초기화
