@@ -14,10 +14,6 @@ const app = express();
 const port = process.env.PORT || 3000;
 dotenv.config();
 
-// ✅ CORS — 맨 위에서 설정
-
-const cors = require('cors');
-
 // ✅ 허용할 도메인을 배열로 정의
 const allowedOrigins = [
   'http://localhost:5500',
