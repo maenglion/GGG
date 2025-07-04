@@ -25,7 +25,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-app.options('*', cors());
+app.use(cors(corsOptions));
 
 // ✅ firebase-admin 초기화
 let serviceAccount;
