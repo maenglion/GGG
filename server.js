@@ -119,6 +119,9 @@ async function verifyFirebaseToken(req, res, next) {
 
 // --- API 라우트 설정 ---
 // GPT Chat API 라우트 (이 부분은 변경 없음)
+
+
+
 app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
   const { messages } = req.body;
   const clientModel = req.body.model || 'gpt-4o';
@@ -174,39 +177,26 @@ app.post('/api/gpt-chat', verifyFirebaseToken, async (req, res) => {
 });
 
 // ✅ Google Cloud TTS API 라우트 (하나로 통합 및 수정)
-app.post('/api/google-tts', verifyFirebaseToken, async (req, res) => {
+
+app.post('/api/google-tts', async (req, res) => {
   try {
-    
-    
-    const { text, voiceName } = req.body; // 클라이언트에서 'text'와 'voiceName'으로 보냄
+    const request = { ... }; // TTS request 구성
 
-    // `googleTtsClient`는 전역으로 이미 선언되고 초기화되었습니다.
-    // 따라서 이 라우트 내부에서 'new TextToSpeechClient()'를 다시 호출하거나
-    // 'const client = new textToSpeech.TextToSpeechClient()'처럼 선언할 필요가 없습니다.
-    // 이미 전역 변수 'googleTtsClient'를 사용할 수 있습니다.
+    const [response] = await googleTtsClient.synthesizeSpeech(request);
 
-    if (!text || !voiceName) { // 파라미터 유효성 검사
-        return res.status(400).json({ error: "text와 voiceName 파라미터가 필요합니다." });
-    }
-    
-    const request = {
-      input: { text: text }, // ✅ 클라이언트에서 받은 text 사용
-      voice: {
-        languageCode: 'ko-KR',
-        name: voiceName // ✅ 클라이언트에서 받은 voiceName 사용
-      },
-      audioConfig: { audioEncoding: 'MP3' }
-    };
+  if (!response.audioContent) {
+  return res.status(500).json({ error: 'TTS 응답이 비어 있음' });
+}
 
-    const [response] = await googleTtsClient.synthesizeSpeech(request); // 이 줄 유지 
+
+    res.set('Access-Control-Allow-Origin', 'https://lozee.netlify.app'); // ✅ 강제로 헤더 추가
     res.set('Content-Type', 'audio/mpeg');
     res.send(response.audioContent);
-
   } catch (error) {
-    console.error('❌ Google TTS 에러:', error);
-    res.status(500).send({
-      error: 'Google TTS 오디오 생성 중 서버 오류 발생',
-      detail: error.message // Google Cloud TTS API의 상세 에러 메시지를 포함
+    console.error('❌ Google TTS 처리 오류:', error);
+    res.status(500).json({
+      error: 'Google TTS 서버 오류 발생',
+      detail: error.message || '원인 불명'
     });
   }
 });
