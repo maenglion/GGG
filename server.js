@@ -16,15 +16,14 @@ dotenv.config();
 
 // ✅ CORS — 맨 위에서 설정
 app.use(cors({
-  origin: [
-    'http://127.0.0.1:5500',
-    'http://localhost:5500',
-    'https://lozee.netlify.app'
-  ],
+  origin: 'https://lozee.netlify.app', // 💡 단일 허용만 해도 충분
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+app.options('*', cors()); // ✅ CORS preflight 대응
+
 
 // ✅ firebase-admin 초기화
 let serviceAccount;
@@ -125,7 +124,6 @@ app.post('/api/google-tts', async (req, res) => {
     const [response] = await googleTtsClient.synthesizeSpeech(request);
     if (!response.audioContent) return res.status(500).json({ error: 'TTS 응답 없음' });
 
-    res.set('Access-Control-Allow-Origin', 'https://lozee.netlify.app');
     res.set('Content-Type', 'audio/mpeg');
     res.send(response.audioContent);
   } catch (e) {
